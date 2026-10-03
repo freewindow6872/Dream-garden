@@ -37,6 +37,6 @@ public class PlayerRespawn : MonoBehaviour
             return;
 
         if (rb != null)
-            rb.linearVelocity = Vector2.zero;
+            rb.velocity = Vector2.zero;
     }
 }

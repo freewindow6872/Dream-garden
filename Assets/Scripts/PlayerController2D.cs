@@ -25,6 +25,16 @@ public class PlayerController2D : MonoBehaviour
     [SerializeField] private Transform groundCheck;
     [SerializeField] private Vector2 groundCheckSize = new Vector2(0.55f, 0.12f);
     [SerializeField] private LayerMask groundLayer;
+    [Tooltip("발이 발판 윗면보다 이 값 이상 아래에 있으면 '옆면/아래면 접촉'으로 보고 지면으로 치지 않음")]
+    [SerializeField] private float topSurfaceTolerance = 0.08f;
+    [Tooltip("플레이어 중심 x가 발판의 x 범위를 벗어나면 낙하 처리 (모서리에 걸쳐 서 있지 않게 함)")]
+    [SerializeField] private bool fallWhenCenterOffPlatform = true;
+    [Tooltip("모서리에 걸쳤을 때 바깥쪽으로 미끄러지는 속도")]
+    [SerializeField] private float ledgeSlipSpeed = 3f;
+
+    [Header("Wall / Friction")]
+    [Tooltip("true: 마찰 0 재질을 콜라이더에 적용해 벽/발판 옆면에 비벼 붙는 현상을 없앰")]
+    [SerializeField] private bool removeWallFriction = true;
 
     [Header("Visual")]
     [SerializeField] private SpriteRenderer spriteRenderer;
@@ -55,6 +65,8 @@ public class PlayerController2D : MonoBehaviour
     private float coyoteCounter;
     private float jumpBufferCounter;
     private bool isGrounded;
+    private int ledgeDir;                       // 0 = 모서리 걸침 아님, ±1 = 떨어질 방향
+    private readonly Collider2D[] groundHits = new Collider2D[8];
 
     private int airJumpsLeft;
     private int airDashesLeft;
@@ -86,6 +98,14 @@ public class PlayerController2D : MonoBehaviour
         col = GetComponent<Collider2D>();
         health = GetComponent<Health>();
         baseGravityScale = rb.gravityScale;
+
+        if (removeWallFriction && col != null && col.sharedMaterial == null)
+        {
+            PhysicsMaterial2D slick = new PhysicsMaterial2D("PlayerNoFriction");
+            slick.friction = 0f;
+            slick.bounciness = 0f;
+            col.sharedMaterial = slick;
+        }
 
         FacingDir = 1;
         MoveSpeedMultiplier = 1f;
@@ -139,12 +159,20 @@ public class PlayerController2D : MonoBehaviour
     {
         if (isDashing)
         {
-            rb.linearVelocity = new Vector2(dashDir * dashSpeed, 0f);
+            rb.velocity = new Vector2(dashDir * dashSpeed, 0f);
             return;
         }
 
         if (hurtTimer <= 0f)
             HandleMovement();
+
+        // 모서리에 걸쳐 있으면 바깥쪽으로 밀어서 확실히 낙하시킨다
+        if (ledgeDir != 0 && !isGrounded)
+        {
+            float vx = rb.velocity.x;
+            if (vx * ledgeDir < ledgeSlipSpeed)
+                rb.velocity = new Vector2(ledgeDir * ledgeSlipSpeed, rb.velocity.y);
+        }
 
         ApplyBetterGravity();
     }
@@ -175,12 +203,46 @@ public class PlayerController2D : MonoBehaviour
         return new Vector2(b.center.x, b.min.y - groundCheckSize.y * 0.5f + 0.02f);
     }
 
+    /// <summary>
+    /// 지면 판정. 발판의 "윗면"에 서 있을 때만 지면으로 인정한다.
+    ///  - 발이 발판 윗면보다 아래 → 옆면/아랫면에 닿은 것 → 지면 아님 (벽 타고 점프 / 비벼짐 방지)
+    ///  - 중심 x가 발판 x 범위를 벗어남 → 모서리에 걸친 것 → 낙하 (ledgeDir 쪽으로 미끄러짐)
+    /// </summary>
     private void CheckGround()
     {
-        bool overlap = Physics2D.OverlapBox(GroundCheckCenter(), groundCheckSize, 0f, groundLayer) != null;
+        bool standing = false;
+        ledgeDir = 0;
 
-        // 올라가는 중에는 지면으로 치지 않는다 (점프 직후 재점프/원웨이 발판 통과 중 오작동 방지)
-        isGrounded = overlap && rb.linearVelocity.y <= 0.05f;
+        if (col != null && rb.velocity.y <= 0.05f)
+        {
+            float feetY = col.bounds.min.y;
+            float centerX = col.bounds.center.x;
+
+            int count = Physics2D.OverlapBoxNonAlloc(GroundCheckCenter(), groundCheckSize, 0f, groundHits, groundLayer);
+            for (int i = 0; i < count; i++)
+            {
+                Collider2D other = groundHits[i];
+                if (other == null || other == col || other.isTrigger) continue;
+
+                Bounds ob = other.bounds;
+
+                // 윗면 판정: 발이 발판 윗면 근처 또는 그 위에 있어야 함
+                if (feetY < ob.max.y - topSurfaceTolerance) continue;
+
+                bool centerOn = centerX >= ob.min.x && centerX <= ob.max.x;
+                if (centerOn || !fallWhenCenterOffPlatform)
+                {
+                    standing = true;
+                    ledgeDir = 0;
+                    break;
+                }
+
+                // 모서리에만 걸친 상태: 바깥쪽으로 떨어뜨림
+                ledgeDir = centerX < ob.center.x ? -1 : 1;
+            }
+        }
+
+        isGrounded = standing;
 
         if (isGrounded)
         {
@@ -223,15 +285,15 @@ public class PlayerController2D : MonoBehaviour
             }
         }
 
-        if (GameInput.JumpUp && rb.linearVelocity.y > 0f)
+        if (GameInput.JumpUp && rb.velocity.y > 0f)
         {
-            rb.linearVelocity = new Vector2(rb.linearVelocity.x, rb.linearVelocity.y * 0.5f);
+            rb.velocity = new Vector2(rb.velocity.x, rb.velocity.y * 0.5f);
         }
     }
 
     private void DoJump(float force)
     {
-        rb.linearVelocity = new Vector2(rb.linearVelocity.x, force);
+        rb.velocity = new Vector2(rb.velocity.x, force);
         if (Jumped != null) Jumped();
     }
 
@@ -258,7 +320,7 @@ public class PlayerController2D : MonoBehaviour
         dashCooldownTimer = dashCooldown;
 
         rb.gravityScale = 0f;
-        rb.linearVelocity = new Vector2(dashDir * dashSpeed, 0f);
+        rb.velocity = new Vector2(dashDir * dashSpeed, 0f);
 
         if (dashGrantsInvulnerability && health != null) health.SetForcedInvulnerable(true);
         if (DashStarted != null) DashStarted();
@@ -270,7 +332,7 @@ public class PlayerController2D : MonoBehaviour
 
         isDashing = false;
         rb.gravityScale = baseGravityScale;
-        rb.linearVelocity = new Vector2(dashDir * moveSpeed, 0f);
+        rb.velocity = new Vector2(dashDir * moveSpeed, 0f);
 
         if (dashGrantsInvulnerability && health != null) health.SetForcedInvulnerable(false);
     }
@@ -280,7 +342,7 @@ public class PlayerController2D : MonoBehaviour
     private void HandleMovement()
     {
         float targetSpeed = moveInput * moveSpeed * MoveSpeedMultiplier;
-        float speedDifference = targetSpeed - rb.linearVelocity.x;
+        float speedDifference = targetSpeed - rb.velocity.x;
 
         float accelRate = Mathf.Abs(targetSpeed) > 0.01f
             ? acceleration
@@ -293,14 +355,14 @@ public class PlayerController2D : MonoBehaviour
 
     private void ApplyBetterGravity()
     {
-        if (rb.linearVelocity.y < 0f)
+        if (rb.velocity.y < 0f)
         {
             rb.AddForce(
                 Vector2.up * Physics2D.gravity.y * (fallGravityMultiplier - 1f),
                 ForceMode2D.Force
             );
         }
-        else if (rb.linearVelocity.y > 0f && !GameInput.JumpHeld)
+        else if (rb.velocity.y > 0f && !GameInput.JumpHeld)
         {
             rb.AddForce(
                 Vector2.up * Physics2D.gravity.y * (lowJumpGravityMultiplier - 1f),
@@ -325,7 +387,7 @@ public class PlayerController2D : MonoBehaviour
         EndDash();
         hurtTimer = hurtStunTime;
         if (info.knockback.sqrMagnitude > 0.01f)
-            rb.linearVelocity = info.knockback;
+            rb.velocity = info.knockback;
     }
 
     private void OnDied(Health h)
@@ -353,7 +415,7 @@ public class PlayerController2D : MonoBehaviour
     /// <summary>공격 돌진(lunge) 등, 수평 속도를 순간적으로 더한다.</summary>
     public void AddHorizontalImpulse(float vx)
     {
-        rb.linearVelocity = new Vector2(rb.linearVelocity.x + vx, rb.linearVelocity.y);
+        rb.velocity = new Vector2(rb.velocity.x + vx, rb.velocity.y);
     }
 
     private void OnDrawGizmosSelected()
@@ -372,11 +434,11 @@ public class PlayerController2D : MonoBehaviour
 
     public float HorizontalSpeed()
     {
-        return Mathf.Abs(rb.linearVelocity.x);
+        return Mathf.Abs(rb.velocity.x);
     }
 
     public float VerticalSpeed()
     {
-        return rb.linearVelocity.y;
+        return rb.velocity.y;
     }
 }
