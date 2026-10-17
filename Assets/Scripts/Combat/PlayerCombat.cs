@@ -16,15 +16,23 @@ public class PlayerCombat : MonoBehaviour
     [SerializeField] private float inputBufferTime = 0.2f;
     [SerializeField, Range(0f, 1f)] private float moveMultiplierWhileAttacking = 0.35f;
     [SerializeField] private float hitStopTime = 0.045f;
+    [Header("딜레이 튜닝 (WeaponData 값에 곱해짐)")]
+    [Tooltip("선딜레이(공격 키 → 판정 발생까지) 배율. 1 = 그대로, 2 = 2배 느림")]
+    [SerializeField, Min(0f)] private float startupScale = 1f;
+    [Tooltip("후딜레이(판정 끝 → 다음 행동 가능까지) 배율")]
+    [SerializeField, Min(0f)] private float recoveryScale = 1f;
+
+    [Header("Debug")]
     [Tooltip("공격 판정 범위를 반투명 박스로 보여줌 (그래픽 들어오기 전 임시 이펙트)")]
     [SerializeField] private bool showSlashDebug = true;
 
-    private enum Phase { Idle, Startup, Active, Recovery }
+    /// <summary>공격 진행 단계. 애니메이션/이펙트 스크립트가 구독해서 쓴다.</summary>
+    public enum AttackPhase { Idle, Startup, Active, Recovery }
 
     private PlayerController2D controller;
     private Health health;
 
-    private Phase phase = Phase.Idle;
+    private AttackPhase phase = AttackPhase.Idle;
     private float phaseTimer;
     private int comboIndex = -1;
     private float comboResetTimer;
@@ -33,13 +41,37 @@ public class PlayerCombat : MonoBehaviour
     private readonly HashSet<Health> hitSet = new HashSet<Health>();
     private SpriteRenderer slash;
 
-    public bool IsAttacking { get { return phase != Phase.Idle; } }
+    public bool IsAttacking { get { return phase != AttackPhase.Idle; } }
     public int ComboIndex { get { return comboIndex; } }
+    public AttackPhase CurrentPhase { get { return phase; } }
+    /// <summary>현재 공격이 바라보는 방향 (+1 오른쪽 / -1 왼쪽)</summary>
+    public int AttackDir { get { return attackDir; } }
+
+    /// <summary>현재 타의 총 길이(선딜+판정+후딜, 배율 적용). 애니메이션 속도 맞출 때 사용</summary>
+    public float CurrentStepDuration
+    {
+        get
+        {
+            if (weapon == null || comboIndex < 0 || comboIndex >= weapon.combo.Length) return 0f;
+            ComboStep s = weapon.combo[comboIndex];
+            return s.startup * startupScale + s.active + s.recovery * recoveryScale;
+        }
+    }
+
+    /// <summary>단계가 바뀔 때 (새 단계, 콤보 인덱스). Idle로 돌아올 때도 호출됨</summary>
+    public event System.Action<AttackPhase, int> PhaseChanged;
 
     /// <summary>공격 시작 (콤보 인덱스) - 애니메이션/사운드 연결용</summary>
     public event System.Action<int> AttackStarted;
     /// <summary>적중 - 화면 흔들림/이펙트 연결용</summary>
     public event System.Action<Health, DamageInfo> HitLanded;
+
+    private void SetPhase(AttackPhase next)
+    {
+        if (phase == next) return;
+        phase = next;
+        if (PhaseChanged != null) PhaseChanged(next, comboIndex);
+    }
 
     private void Awake()
     {
@@ -56,12 +88,21 @@ public class PlayerCombat : MonoBehaviour
     private void OnEnable()
     {
         if (controller == null) controller = GetComponent<PlayerController2D>();
+        if (health == null) health = GetComponent<Health>();
         controller.DashStarted += CancelAttack;
+        health.Damaged += OnHurt;
     }
 
     private void OnDisable()
     {
         if (controller != null) controller.DashStarted -= CancelAttack;
+        if (health != null) health.Damaged -= OnHurt;
+        CancelAttack();
+    }
+
+    /// <summary>피격 시 진행 중이던 공격은 끊긴다 (경직)</summary>
+    private void OnHurt(DamageInfo info)
+    {
         CancelAttack();
     }
 
@@ -82,7 +123,7 @@ public class PlayerCombat : MonoBehaviour
     {
         if (health.IsDead || controller.InputLocked)
         {
-            if (phase != Phase.Idle) CancelAttack();
+            if (phase != AttackPhase.Idle) CancelAttack();
             return;
         }
 
@@ -93,7 +134,7 @@ public class PlayerCombat : MonoBehaviour
 
         switch (phase)
         {
-            case Phase.Idle:
+            case AttackPhase.Idle:
                 if (comboResetTimer > 0f)
                 {
                     comboResetTimer -= dt;
@@ -103,18 +144,18 @@ public class PlayerCombat : MonoBehaviour
                     StartStep(comboIndex < 0 ? 0 : (comboIndex + 1) % weapon.combo.Length);
                 break;
 
-            case Phase.Startup:
+            case AttackPhase.Startup:
                 phaseTimer -= dt;
                 if (phaseTimer <= 0f) EnterActive();
                 break;
 
-            case Phase.Active:
+            case AttackPhase.Active:
                 phaseTimer -= dt;
                 DoHitCheck();
                 if (phaseTimer <= 0f) EnterRecovery();
                 break;
 
-            case Phase.Recovery:
+            case AttackPhase.Recovery:
                 phaseTimer -= dt;
                 if (phaseTimer <= 0f) FinishRecovery();
                 break;
@@ -128,8 +169,8 @@ public class PlayerCombat : MonoBehaviour
         comboIndex = index;
         ComboStep step = weapon.combo[index];
 
-        phase = Phase.Startup;
-        phaseTimer = step.startup;
+        SetPhase(AttackPhase.Startup);
+        phaseTimer = step.startup * startupScale;
         bufferTimer = 0f;
         hitSet.Clear();
 
@@ -143,7 +184,7 @@ public class PlayerCombat : MonoBehaviour
     private void EnterActive()
     {
         ComboStep step = weapon.combo[comboIndex];
-        phase = Phase.Active;
+        SetPhase(AttackPhase.Active);
         phaseTimer = step.active;
         controller.AddHorizontalImpulse(attackDir * step.lunge);
         DoHitCheck();
@@ -151,14 +192,14 @@ public class PlayerCombat : MonoBehaviour
 
     private void EnterRecovery()
     {
-        phase = Phase.Recovery;
-        phaseTimer = weapon.combo[comboIndex].recovery;
+        SetPhase(AttackPhase.Recovery);
+        phaseTimer = weapon.combo[comboIndex].recovery * recoveryScale;
         HideSlash();
     }
 
     private void FinishRecovery()
     {
-        phase = Phase.Idle;
+        SetPhase(AttackPhase.Idle);
         controller.FacingLocked = false;
         controller.MoveSpeedMultiplier = 1f;
 
@@ -169,9 +210,9 @@ public class PlayerCombat : MonoBehaviour
 
     public void CancelAttack()
     {
-        phase = Phase.Idle;
         comboIndex = -1;
         comboResetTimer = 0f;
+        SetPhase(AttackPhase.Idle);
         HideSlash();
 
         if (controller != null)
@@ -209,6 +250,7 @@ public class PlayerCombat : MonoBehaviour
             info.knockback = new Vector2(step.knockback.x * attackDir, step.knockback.y);
             info.sourceTeam = Team.Player;
             info.source = gameObject;
+            info.hitPoint = cols[i].ClosestPoint(center);
 
             if (target.TakeDamage(info))
             {
