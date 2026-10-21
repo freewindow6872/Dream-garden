@@ -36,6 +36,15 @@ public class WeaponData : ScriptableObject
         return Mathf.Max(1, Mathf.RoundToInt(roll * multiplier));
     }
 
+#if UNITY_EDITOR
+    [ContextMenu("기본값 채우기 (낡은 정원 가위 3타 콤보)")]
+    private void FillDefaultsFromMenu()
+    {
+        ApplyOldScissorsDefaults();
+        UnityEditor.EditorUtility.SetDirty(this);
+    }
+#endif
+
     /// <summary>낡은 정원 가위: 3타 콤보 (마지막 타는 느리지만 강하고 넉백이 큼)</summary>
     public void ApplyOldScissorsDefaults()
     {

@@ -10,4 +10,6 @@ public struct DamageInfo
     public Team sourceTeam;
     public GameObject source;
     public bool isCritical;
+    /// <summary>적중 지점(월드 좌표). 적중 이펙트를 띄울 위치.</summary>
+    public Vector2 hitPoint;
 }
