@@ -14,7 +14,8 @@ public class PlayerCombat : MonoBehaviour
     public WeaponData weapon;
 
     [SerializeField] private float inputBufferTime = 0.2f;
-    [SerializeField, Range(0f, 1f)] private float moveMultiplierWhileAttacking = 0.35f;
+    [Tooltip("공격 중 이동속도 배율: 0.675 = 평소 속도의 67.5% (기존 35%에서 감속 페널티를 절반 완화)")]
+    [SerializeField, Range(0f, 1f)] private float moveMultiplierWhileAttacking = 0.675f;
     [SerializeField] private float hitStopTime = 0.045f;
     [Header("딜레이 튜닝 (WeaponData 값에 곱해짐)")]
     [Tooltip("선딜레이(공격 키 → 판정 발생까지) 배율. 1 = 그대로, 2 = 2배 느림")]
