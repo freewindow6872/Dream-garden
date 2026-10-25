@@ -54,8 +54,6 @@ public class PlayerSpriteAnimator : MonoBehaviour
             frameIndex = (frameIndex + 1) % frames.Length;
             if (frames[frameIndex] != null) spriteRenderer.sprite = frames[frameIndex];
         }
-        if (Mathf.Abs(controller.HorizontalSpeed()) > moveThreshold && !controller.FacingLocked)
-            spriteRenderer.flipX = controller.FacingDir < 0;
     }
 
     private void SetState(AnimationState state, bool reset)

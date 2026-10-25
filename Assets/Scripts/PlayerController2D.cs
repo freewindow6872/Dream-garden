@@ -377,7 +377,8 @@ public class PlayerController2D : MonoBehaviour
             FacingDir = moveInput > 0f ? 1 : -1;
 
         if (spriteRenderer != null)
-            spriteRenderer.flipX = FacingDir < 0;
+            // 스프라이트 원본이 왼쪽을 바라보므로 오른쪽 이동일 때 좌우 반전
+            spriteRenderer.flipX = FacingDir > 0;
     }
 
     // ---------------------------------------------------------------- hurt / lock
