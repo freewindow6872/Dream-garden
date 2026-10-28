@@ -22,10 +22,19 @@ public class TestBotAI : MonoBehaviour
     [SerializeField] private float sniperRange = 7f;
     [SerializeField] private float droneDetectionRadius = 8f;
     [SerializeField] private float verticalDetectionTolerance = 2.5f;
+    [Header("Ranged spacing")]
+    [Tooltip("원거리 봇이 유지하려는 플레이어와의 가로 거리")]
+    [SerializeField] private float rangedPreferredDistance = 4.5f;
+    [Tooltip("유지 거리에서 이만큼 벗어나도 제자리에서 공격")]
+    [SerializeField] private float rangedDistanceTolerance = 0.75f;
+    [Tooltip("거리를 조절할 때 이동 속도 배율")]
+    [SerializeField] private float rangedRepositionSpeedMultiplier = 1f;
     [SerializeField] private float recognitionDelay = .35f;
     [Header("Attacks")]
     [SerializeField] private int meleeDamage = 1;
     [SerializeField] private float meleeRange = 1.0f;
+    [Tooltip("근접 공격 판정의 세로 허용 거리")]
+    [SerializeField] private float meleeVerticalRange = 1.2f;
     [SerializeField] private float meleeCooldown = 1.0f;
     [SerializeField] private int projectileDamage = 1;
     [SerializeField] private float projectileSpeed = 6f;
@@ -55,18 +64,29 @@ public class TestBotAI : MonoBehaviour
         if (spriteRenderer) baseColor = spriteRenderer.color;
         health.Configure(Team.Enemy, Mathf.Max(1, Mathf.RoundToInt(maxHealth)), 0f);
         health.Died += OnDied;
+        if (GetComponent<EnemyHealthBar>() == null) gameObject.AddComponent<EnemyHealthBar>();
         if (player == null) { GameObject p = GameObject.FindGameObjectWithTag("Player"); if (p) player = p.transform; }
-        if (type == BotType.Sniper)
-        {
-            laser = gameObject.AddComponent<LineRenderer>();
-            laser.positionCount = 2; laser.startWidth = laserWidth; laser.endWidth = laserWidth;
-            laser.material = new Material(Shader.Find("Sprites/Default"));
-            laser.startColor = Color.red; laser.endColor = Color.red; laser.enabled = false; laser.sortingOrder = 6;
-        }
+        EnsureLaser();
+    }
+
+    private void EnsureLaser()
+    {
+        if (type != BotType.Sniper || laser != null) return;
+        laser = GetComponent<LineRenderer>();
+        if (laser == null) laser = gameObject.AddComponent<LineRenderer>();
+        laser.positionCount = 2;
+        laser.startWidth = laserWidth;
+        laser.endWidth = laserWidth;
+        if (laser.material == null) laser.material = new Material(Shader.Find("Sprites/Default"));
+        laser.startColor = Color.red;
+        laser.endColor = Color.red;
+        laser.enabled = false;
+        laser.sortingOrder = 6;
     }
 
     private void Update()
     {
+        EnsureLaser(); // Bootstrap이 런타임에 봇 종류를 지정하는 경우에도 저격 레이저 생성
         if (dead) return;
         if (player == null) { GameObject p = GameObject.FindGameObjectWithTag("Player"); if (p) player = p.transform; else { Patrol(); return; } }
         Vector2 delta = player.position - transform.position;
@@ -97,10 +117,10 @@ public class TestBotAI : MonoBehaviour
 
     private void UpdateScout(Vector2 delta)
     {
-        if (Mathf.Abs(delta.x) > meleeRange || Mathf.Abs(delta.y) > 1.2f)
+        if (Mathf.Abs(delta.x) > meleeRange || Mathf.Abs(delta.y) > meleeVerticalRange)
             transform.position += Vector3.right * direction * (patrolSpeed * chaseSpeedMultiplier) * Time.deltaTime;
         attackTimer -= Time.deltaTime;
-        if (Mathf.Abs(delta.x) <= meleeRange && Mathf.Abs(delta.y) <= 1.2f && attackTimer <= 0f)
+        if (Mathf.Abs(delta.x) <= meleeRange && Mathf.Abs(delta.y) <= meleeVerticalRange && attackTimer <= 0f)
         {
             attackTimer = meleeCooldown;
             DamagePlayer(meleeDamage, new Vector2(direction * 3f, 1.5f));
@@ -109,13 +129,23 @@ public class TestBotAI : MonoBehaviour
 
     private void UpdateDrone(Vector2 delta)
     {
-        // Drone chases in a straight line, including vertically; its projectile attack is ranged.
-        transform.position += (Vector3)(delta.sqrMagnitude > .001f ? delta.normalized : Vector2.right * direction) * (patrolSpeed * chaseSpeedMultiplier) * Time.deltaTime;
+        // 원거리 공격을 위해 플레이어에게 달라붙지 않고 지정한 가로 거리를 유지한다.
+        float distanceX = Mathf.Abs(delta.x);
+        float preferred = Mathf.Max(0.1f, rangedPreferredDistance);
+        float tolerance = Mathf.Max(0f, rangedDistanceTolerance);
+        float moveDir = 0f;
+        if (distanceX > preferred + tolerance) moveDir = direction;       // 너무 멀면 접근
+        else if (distanceX < preferred - tolerance) moveDir = -direction; // 너무 가까우면 후퇴
+        if (Mathf.Abs(delta.y) > verticalDetectionTolerance) moveDir = 0f;
+        if (moveDir != 0f)
+            transform.position += Vector3.right * moveDir * patrolSpeed * rangedRepositionSpeedMultiplier * Time.deltaTime;
+
         attackTimer -= Time.deltaTime;
-        if (delta.magnitude <= droneDetectionRadius && attackTimer <= 0f)
+        if (distanceX <= droneDetectionRadius && distanceX >= preferred - tolerance && distanceX <= preferred + tolerance &&
+            Mathf.Abs(delta.y) <= verticalDetectionTolerance && attackTimer <= 0f)
         {
             attackTimer = projectileCooldown;
-            Vector2 from = transform.position;
+            Vector2 from = transform.position + Vector3.up * 0.1f;
             Vector2 target = (Vector2)player.position - from;
             EnemyBullet.Spawn(from, target.normalized, projectileSpeed, projectileDamage, projectileKnockback, projectileLifetime, gameObject);
         }
@@ -123,8 +153,23 @@ public class TestBotAI : MonoBehaviour
 
     private void UpdateSniper(Vector2 delta)
     {
+        // 저격봇도 너무 가까워지면 후퇴하고, 사격 거리 밖이면 천천히 접근한다.
+        float distanceX = Mathf.Abs(delta.x);
+        float preferred = Mathf.Max(0.1f, rangedPreferredDistance);
+        float tolerance = Mathf.Max(0f, rangedDistanceTolerance);
+        float moveDir = 0f;
+        if (distanceX > preferred + tolerance) moveDir = direction;
+        else if (distanceX < preferred - tolerance) moveDir = -direction;
+        if (moveDir != 0f)
+            transform.position += Vector3.right * moveDir * patrolSpeed * rangedRepositionSpeedMultiplier * Time.deltaTime;
+        delta = player.position - transform.position;
+        direction = delta.x >= 0 ? 1 : -1;
+
         attackTimer -= Time.deltaTime;
-        if (attackTimer <= 0f && laserTelegraphTimer <= 0f) laserTelegraphTimer = laserTelegraphTime;
+        bool inFiringPosition = distanceX <= sniperRange && distanceX >= preferred - tolerance &&
+                                distanceX <= preferred + tolerance && Mathf.Abs(delta.y) <= laserVerticalTolerance;
+        if (inFiringPosition && attackTimer <= 0f && laserTelegraphTimer <= 0f) laserTelegraphTimer = laserTelegraphTime;
+        if (!inFiringPosition && laserTelegraphTimer <= 0f) { UpdateLaser(false); return; }
         if (laserTelegraphTimer > 0f)
         {
             laserTelegraphTimer -= Time.deltaTime;
@@ -139,10 +184,9 @@ public class TestBotAI : MonoBehaviour
                 {
                     if (hit.collider == null || hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform)) continue;
                     Health target = hit.collider.GetComponentInParent<Health>();
-                    if (target != null && target.Team == Team.Player && Mathf.Abs(hit.point.y - player.position.y) <= laserVerticalTolerance)
-                    {
+                    if (target != null && target.Team == Team.Player && Mathf.Abs(origin.y - player.position.y) <= laserVerticalTolerance)
                         DamagePlayer(projectileDamage, new Vector2(direction * 3f, 1f));
-                    }
+                    // 첫 번째 유효한 장애물/대상에서 레이저가 막힌다.
                     break;
                 }
             }
@@ -189,6 +233,33 @@ public class TestBotAI : MonoBehaviour
         GearReward.Spawn(transform.position, gearReward);
         Destroy(gameObject);
     }
+    private void OnDrawGizmosSelected()
+    {
+        Vector3 origin = transform.position;
+        if (type == BotType.Scout)
+        {
+            Gizmos.color = new Color(1f, 0.25f, 0.2f, 0.85f);
+            int dir = Application.isPlaying ? direction : 1;
+            Vector3 center = origin + Vector3.right * dir * (meleeRange * 0.5f);
+            Gizmos.DrawWireCube(center, new Vector3(meleeRange, meleeVerticalRange * 2f, 0.05f));
+        }
+        else if (type == BotType.Drone)
+        {
+            Gizmos.color = new Color(0.2f, 0.8f, 1f, 0.8f);
+            Gizmos.DrawWireSphere(origin, droneDetectionRadius);
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawWireSphere(origin, rangedPreferredDistance);
+        }
+        else
+        {
+            Gizmos.color = new Color(1f, 0.2f, 0.2f, 0.8f);
+            int dir = Application.isPlaying ? direction : 1;
+            Gizmos.DrawLine(origin + Vector3.up * .25f, origin + Vector3.up * .25f + Vector3.right * dir * sniperLaserLength);
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawWireSphere(origin, rangedPreferredDistance);
+        }
+    }
+
     private void OnDestroy() { if (health != null) health.Died -= OnDied; }
 }
 
