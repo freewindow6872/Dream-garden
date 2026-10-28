@@ -35,7 +35,7 @@ public class AIBotTestBootstrap : MonoBehaviour
         GameObject go = new GameObject(objectName); go.transform.position = position; go.transform.localScale = new Vector3(.8f, .8f, 1f);
         SpriteRenderer sr = go.AddComponent<SpriteRenderer>(); sr.sprite = RuntimeSprites.White; sr.color = color; sr.sortingOrder = 2;
         BoxCollider2D box = go.AddComponent<BoxCollider2D>(); box.size = Vector2.one;
-        Rigidbody2D rb = go.AddComponent<Rigidbody2D>(); rb.gravityScale = 0f; rb.bodyType = RigidbodyType2D.Kinematic;
+        Rigidbody2D rb = go.AddComponent<Rigidbody2D>(); rb.gravityScale = type == TestBotAI.BotType.Drone ? 0f : 3f; rb.bodyType = RigidbodyType2D.Dynamic; rb.constraints = RigidbodyConstraints2D.FreezeRotation; rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         Health health = go.AddComponent<Health>();
         TestBotAI ai = go.AddComponent<TestBotAI>();
         // Serialized values remain editable on the component; runtime setup only supplies type/target/spawn defaults.

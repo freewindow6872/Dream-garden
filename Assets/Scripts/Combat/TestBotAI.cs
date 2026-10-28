@@ -7,7 +7,7 @@ public class TestBotAI : MonoBehaviour
     [Header("Bot")]
     public BotType type = BotType.Scout;
     [SerializeField] private Transform player;
-    [SerializeField] private float maxHealth = 3f;
+    [SerializeField] private float maxHealth = 100f;
     [SerializeField] private int gearReward = 1;
     [Header("Movement")]
     [SerializeField] private float patrolSpeed = 1.2f;
@@ -51,6 +51,7 @@ public class TestBotAI : MonoBehaviour
 
     private SpriteRenderer spriteRenderer;
     private Health health;
+    private Rigidbody2D body;
     private int direction = 1;
     private bool alerted, dead, recognizing;
     private float recognitionTimer, attackTimer, laserTelegraphTimer;
@@ -61,6 +62,13 @@ public class TestBotAI : MonoBehaviour
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
         health = GetComponent<Health>();
+        body = GetComponent<Rigidbody2D>();
+        if (body == null) body = gameObject.AddComponent<Rigidbody2D>();
+        body.bodyType = RigidbodyType2D.Dynamic;
+        body.gravityScale = type == BotType.Drone ? 0f : 3f;
+        body.constraints = RigidbodyConstraints2D.FreezeRotation;
+        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        body.interpolation = RigidbodyInterpolation2D.Interpolate;
         if (spriteRenderer) baseColor = spriteRenderer.color;
         health.Configure(Team.Enemy, Mathf.Max(1, Mathf.RoundToInt(maxHealth)), 0f);
         health.Died += OnDied;
@@ -118,7 +126,9 @@ public class TestBotAI : MonoBehaviour
     private void UpdateScout(Vector2 delta)
     {
         if (Mathf.Abs(delta.x) > meleeRange || Mathf.Abs(delta.y) > meleeVerticalRange)
-            transform.position += Vector3.right * direction * (patrolSpeed * chaseSpeedMultiplier) * Time.deltaTime;
+            SetHorizontalSpeed(direction * patrolSpeed * chaseSpeedMultiplier);
+        else
+            SetHorizontalSpeed(0f);
         attackTimer -= Time.deltaTime;
         if (Mathf.Abs(delta.x) <= meleeRange && Mathf.Abs(delta.y) <= meleeVerticalRange && attackTimer <= 0f)
         {
@@ -137,8 +147,7 @@ public class TestBotAI : MonoBehaviour
         if (distanceX > preferred + tolerance) moveDir = direction;       // 너무 멀면 접근
         else if (distanceX < preferred - tolerance) moveDir = -direction; // 너무 가까우면 후퇴
         if (Mathf.Abs(delta.y) > verticalDetectionTolerance) moveDir = 0f;
-        if (moveDir != 0f)
-            transform.position += Vector3.right * moveDir * patrolSpeed * rangedRepositionSpeedMultiplier * Time.deltaTime;
+        SetHorizontalSpeed(moveDir * patrolSpeed * rangedRepositionSpeedMultiplier);
 
         attackTimer -= Time.deltaTime;
         if (distanceX <= droneDetectionRadius && distanceX >= preferred - tolerance && distanceX <= preferred + tolerance &&
@@ -160,8 +169,7 @@ public class TestBotAI : MonoBehaviour
         float moveDir = 0f;
         if (distanceX > preferred + tolerance) moveDir = direction;
         else if (distanceX < preferred - tolerance) moveDir = -direction;
-        if (moveDir != 0f)
-            transform.position += Vector3.right * moveDir * patrolSpeed * rangedRepositionSpeedMultiplier * Time.deltaTime;
+        SetHorizontalSpeed(moveDir * patrolSpeed * rangedRepositionSpeedMultiplier);
         delta = player.position - transform.position;
         direction = delta.x >= 0 ? 1 : -1;
 
@@ -222,8 +230,17 @@ public class TestBotAI : MonoBehaviour
             if (transform.position.x <= patrolMinX || transform.position.x >= patrolMaxX || wall || !groundAhead) direction *= -1;
         }
         else if (Physics2D.Raycast(transform.position, Vector2.right * direction, wallCheckDistance, GameLayers.GroundMaskValue)) direction *= -1;
-        transform.position += Vector3.right * direction * patrolSpeed * Time.deltaTime;
+        SetHorizontalSpeed(direction * patrolSpeed);
         if (spriteRenderer) spriteRenderer.flipX = direction < 0;
+    }
+
+    private void SetHorizontalSpeed(float speed)
+    {
+        if (body == null) return;
+        Vector2 velocity = body.velocity;
+        velocity.x = speed;
+        if (type == BotType.Drone) velocity.y = 0f;
+        body.velocity = velocity;
     }
 
     private void OnDied(Health h)
@@ -261,42 +278,4 @@ public class TestBotAI : MonoBehaviour
     }
 
     private void OnDestroy() { if (health != null) health.Died -= OnDied; }
-}
-
-public class GearReward : MonoBehaviour
-{
-    private int amount = 1;
-    private bool collected;
-    public static void Spawn(Vector2 position, int value)
-    {
-        GameObject go = new GameObject("Gear Gold Reward"); go.transform.position = position;
-        go.transform.localScale = new Vector3(.38f, .38f, 1f);
-        SpriteRenderer sr = go.AddComponent<SpriteRenderer>(); sr.sprite = RuntimeSprites.White; sr.color = new Color(1f, .72f, .12f); sr.sortingOrder = 8;
-        CircleCollider2D col = go.AddComponent<CircleCollider2D>(); col.isTrigger = true; col.radius = .7f;
-        Rigidbody2D rb = go.AddComponent<Rigidbody2D>(); rb.gravityScale = 1.2f; rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-        rb.AddForce(new Vector2(Random.Range(-3f, 3f), Random.Range(3f, 5f)), ForceMode2D.Impulse);
-        GearReward reward = go.AddComponent<GearReward>(); reward.amount = Mathf.Max(0, value);
-    }
-    private void OnTriggerEnter2D(Collider2D other)
-    {
-        if (collected || !other.CompareTag("Player")) return;
-        collected = true; GoldCounter.Add(amount); Destroy(gameObject);
-    }
-}
-
-public class GoldCounter : MonoBehaviour
-{
-    public static int Gold { get; private set; }
-    private static GoldCounter instance;
-    private GUIStyle style;
-    [SerializeField] private string label = "Gold";
-    [SerializeField] private Vector2 screenOffset = new Vector2(20f, 20f);
-    [SerializeField] private int fontSize = 24;
-    private void Awake() { instance = this; Gold = 0; }
-    public static void Add(int amount) { Gold += Mathf.Max(0, amount); }
-    private void OnGUI()
-    {
-        if (style == null) { style = new GUIStyle(GUI.skin.label); style.fontSize = fontSize; style.fontStyle = FontStyle.Bold; style.normal.textColor = Color.white; }
-        GUI.Label(new Rect(Screen.width - 170f - screenOffset.x, screenOffset.y, 150f, 40f), label + ": " + Gold, style);
-    }
 }
