@@ -23,7 +23,11 @@ public class RESULTSCREEN : MonoBehaviour
     public Button confirmButton;
 
     [Header("이동할 씬")]
-    public string gardenSceneName = "GARDEN";   
+    public string gardenSceneName = "GARDEN";
+
+    [Header("해금 판정")]
+    public ITEMDATABASE database;
+    bool shown;
 
     bool applied;
 
@@ -39,16 +43,27 @@ public class RESULTSCREEN : MonoBehaviour
     // 클리어 시 호출
     public void Show()
     {
+        if (shown) return;            // 중복 호출 방지
+        shown = true;
+
         RUNTRACKER.EndRun();
+        List<ITEMDATA> unlocked = INVENTORY.RegisterClear(database);
 
         playTimeText.text = "플레이 타임  " + RUNTRACKER.FormatTime();
         gearText.text = "획득한 톱니바퀴  " + RUNTRACKER.Gears;
-        itemText.text = "획득한 아이템\n" + BuildItemList();
+        itemText.text = "획득한 아이템\n" + BuildItemList() + BuildUnlockList(unlocked);
 
         ShowAbilities();
         panel.SetActive(true);
     }
 
+    string BuildUnlockList(List<ITEMDATA> unlocked)
+    {
+        if (unlocked == null || unlocked.Count == 0) return "";
+        string r = "\n새로 해금\n";
+        foreach (ITEMDATA it in unlocked) r += it.itemName + "\n";
+        return r;
+    }
     void ShowAbilities()
     {
         // 식물 3개
