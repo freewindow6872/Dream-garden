@@ -20,4 +20,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Attack test.unity
     guid: 2034b3e9b77723f4c976efa733cc7865
+  - enabled: 1
+    path: Assets/Scenes/GARDEN.unity
+    guid: 91703f66acee7cb44a5ee85818efe144
   m_configObjects: {}
