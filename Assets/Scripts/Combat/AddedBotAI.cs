@@ -125,8 +125,22 @@ public class AddedBotAI : MonoBehaviour
         SetX(direction * patrolSpeed * chargeSpeedMultiplier);
         bool wall = Physics2D.Raycast(rb.position + Vector2.up * 0.1f, Vector2.right * direction, wallCheckDistance, GameLayers.GroundMaskValue);
         bool close = Mathf.Abs(delta.x) <= attackRange && Mathf.Abs(delta.y) <= attackVerticalRange;
-        if (kind == Kind.MixerBot && close) { BeginSpin(); return; }
-        if (kind == Kind.MixerChargeBot && (close || wall)) { BeginSpin(); return; }
+        // 공격 종료 후 설정된 쿨다운이 끝나기 전에는 회전 공격을 다시 시작하지 않는다.
+        // 공격 거리/벽 앞에서는 정지해 쿨다운이 끝난 뒤 자연스럽게 공격하도록 한다.
+        if (kind == Kind.MixerBot && close)
+        {
+            if (cooldown <= 0f) BeginSpin();
+            else SetX(0f);
+            return;
+        }
+
+        if (kind == Kind.MixerChargeBot && (close || wall))
+        {
+            if (cooldown <= 0f) BeginSpin();
+            else SetX(0f);
+            return;
+        }
+
         if (kind == Kind.ChargeBot && (close || wall)) BeginRecovery();
     }
 

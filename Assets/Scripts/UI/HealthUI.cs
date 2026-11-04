@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// 화면 좌상단 체력 UI. (할로우 나이트처럼 좌상단에 붉은 정사각형 칸이 가로로 늘어선다)
@@ -36,6 +37,7 @@ public class HealthUI : MonoBehaviour
     [SerializeField] private float lostPulseScale = 1.6f;
 
     private Transform canvasRoot;
+    private Canvas uiCanvas;
     private Image[] cells = new Image[0];
     private float flashTimer;
     private float pulseTimer;
@@ -44,17 +46,56 @@ public class HealthUI : MonoBehaviour
     private float searchTime;
     private bool warned;
 
-    /// <summary>씬에 HealthUI가 없으면 자동 생성 (CombatBootstrap과 별개로, 이것만으로도 동작)</summary>
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void AutoCreate()
+    /// <summary>
+    /// 씬이 바뀔 때마다 HealthUI가 있는지 확인한다.
+    /// AfterSceneLoad 초기화 메서드는 최초 진입 때만 실행되므로,
+    /// 씬 전환 후 UI가 사라지는 상황을 막기 위해 sceneLoaded를 구독한다.
+    /// </summary>
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void RegisterSceneCallback()
     {
-        if (FindObjectOfType<HealthUI>() == null)
-            new GameObject("HealthUI").AddComponent<HealthUI>();
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        // 씬에 HealthUI가 이미 있으면 재사용하고, 없을 때만 생성한다.
+        HealthUI[] healthUIs = FindObjectsOfType<HealthUI>(true);
+        if (healthUIs.Length == 0)
+        {
+            HealthUI created = new GameObject("HealthUI").AddComponent<HealthUI>();
+            created.SetVisibleForScene(scene);
+            return;
+        }
+
+        // 중복 UI가 존재하더라도 메뉴 씬에서는 전부 숨긴다.
+        for (int i = 0; i < healthUIs.Length; i++)
+            healthUIs[i].SetVisibleForScene(scene);
     }
 
     private void Awake()
     {
         BuildCanvas();
+        SetVisibleForScene(SceneManager.GetActiveScene());
+    }
+
+    private static bool IsHudHiddenScene(Scene scene)
+    {
+        // 프로젝트의 타이틀/메뉴 계열 씬만 차단 목록으로 관리한다.
+        string sceneName = scene.name;
+        return sceneName == "title"
+            || sceneName == "GAMETITLE"
+            || sceneName == "STAGESELECT";
+    }
+
+    private void SetVisibleForScene(Scene scene)
+    {
+        if (uiCanvas == null)
+            uiCanvas = GetComponent<Canvas>();
+
+        if (uiCanvas != null)
+            uiCanvas.enabled = !IsHudHiddenScene(scene);
     }
 
     private void Start()
@@ -69,6 +110,9 @@ public class HealthUI : MonoBehaviour
 
     private void Update()
     {
+        // 메뉴 씬에서는 체력 탐색/갱신을 수행하지 않는다. 게임 씬 진입 시 다시 활성화된다.
+        if (uiCanvas != null && !uiCanvas.enabled) return;
+
         if (target == null)
         {
             findTimer -= Time.unscaledDeltaTime;
@@ -87,10 +131,15 @@ public class HealthUI : MonoBehaviour
             return;
         }
 
-        // 히트스톱(timeScale 저하) 중에도 같은 속도로 움직이도록 unscaled 사용
-        if (flashTimer > 0f) flashTimer -= Time.unscaledDeltaTime;
-        if (pulseTimer > 0f) pulseTimer -= Time.unscaledDeltaTime;
-        ApplyColors();
+        // 히트스톱(timeScale 저하) 중에도 같은 속도로 움직이도록 unscaled 사용.
+        // 피격 연출이 진행 중일 때만 매 프레임 UI 색상/크기를 갱신한다.
+        if (flashTimer > 0f || pulseTimer > 0f)
+        {
+            float dt = Time.unscaledDeltaTime;
+            flashTimer = Mathf.Max(0f, flashTimer - dt);
+            pulseTimer = Mathf.Max(0f, pulseTimer - dt);
+            ApplyColors();
+        }
     }
 
     // ---------------------------------------------------------------- binding
@@ -155,13 +204,13 @@ public class HealthUI : MonoBehaviour
     {
         // Use this object's Canvas directly. A nested Canvas under a World Space Canvas
         // can remain invisible or inherit confusing render setup in existing scenes.
-        Canvas canvas = GetComponent<Canvas>();
-        if (canvas == null) canvas = gameObject.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.worldCamera = null;
-        canvas.planeDistance = 100f;
-        canvas.overrideSorting = true;
-        canvas.sortingOrder = 1000;
+        uiCanvas = GetComponent<Canvas>();
+        if (uiCanvas == null) uiCanvas = gameObject.AddComponent<Canvas>();
+        uiCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        uiCanvas.worldCamera = null;
+        uiCanvas.planeDistance = 100f;
+        uiCanvas.overrideSorting = true;
+        uiCanvas.sortingOrder = 1000;
 
         CanvasScaler scaler = GetComponent<CanvasScaler>();
         if (scaler == null) scaler = gameObject.AddComponent<CanvasScaler>();
