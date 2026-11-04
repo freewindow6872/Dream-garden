@@ -3,8 +3,14 @@ using UnityEngine.Playables;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
+
+
 public class STAGESELECT : MonoBehaviour
 {
+    public void OnBackToGarden()
+    {
+        SceneManager.LoadScene("GARDEN");
+    }
     [Header("패널")]
     public GameObject stagePanel;      // 스테이지 목록 패널
     public GameObject subStagePanel;   // 1-1 ~ 1-8 패널

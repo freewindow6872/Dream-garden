@@ -9,7 +9,7 @@ public class GAMETITLE : MonoBehaviour
 public Button continueButton2;
     public void OnNewGame()
     {
-        SceneManager.LoadScene("STAGESELECT");
+        SceneManager.LoadScene("GARDEN"); 
     }
 
     public void OnContinue()

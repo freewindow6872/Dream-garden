@@ -49,24 +49,30 @@ public class EQUIPCONTROLLER : MonoBehaviour
             b.gameObject.SetActive(true);
             b.GetComponentInChildren<Text>().text = it.itemName;
             b.onClick.AddListener(() => SelectItem(it));
+
         }
         listPopup.SetActive(true);
-    }
+        foreach (ITEMDATA item in database.GetByType(slot.type))
+        {
+            if (!INVENTORY.IsOwned(item)) continue;
+            ITEMDATA it = item;
+        }
 
-    void SelectItem(ITEMDATA item)
-    {
-        if (currentSlot.type == ITEMTYPE.Plant)
+        void SelectItem(ITEMDATA item)
         {
-            foreach (var p in GAMEDATA.Plants)
-                if (p == item) return;   // 같은 식물 중복 방지
-            GAMEDATA.Plants[currentSlot.index] = item;
+            if (currentSlot.type == ITEMTYPE.Plant)
+            {
+                foreach (var p in GAMEDATA.Plants)
+                    if (p == item) return;   // 같은 식물 중복 방지
+                GAMEDATA.Plants[currentSlot.index] = item;
+            }
+            else
+            {
+                GAMEDATA.Animal = item;
+            }
+            currentSlot.SetItem(item);
+            listPopup.SetActive(false);
         }
-        else
-        {
-            GAMEDATA.Animal = item;
-        }
-        currentSlot.SetItem(item);
-        listPopup.SetActive(false);
     }
 
     public void CloseList() { listPopup.SetActive(false); }
