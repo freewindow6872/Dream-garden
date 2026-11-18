@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0191fb62a70e6a74ea4826da66fe6adf, type: 3}
-  m_Name: "\uBE44\uB8CC"
+  m_Name: '#Ube44#Ub8cc'
   m_EditorClassIdentifier: 
   itemName: "\uBE44\uB8CC"
   type: 3
