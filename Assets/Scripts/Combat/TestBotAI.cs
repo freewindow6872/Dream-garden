@@ -4,64 +4,112 @@ using UnityEngine;
 public class TestBotAI : MonoBehaviour
 {
     public enum BotType { Scout, Sniper, Drone }
+    public enum DroneState { Free, Recognizing, Aggro }
+
     [Header("Bot")]
     public BotType type = BotType.Scout;
     [SerializeField] private Transform player;
     [SerializeField] private float maxHealth = 100f;
     [SerializeField] private int gearReward = 1;
-    [Header("Movement")]
+
+    [Header("Movement (Ground Bots)")]
     [SerializeField] private float patrolSpeed = 1.2f;
     [SerializeField] private float chaseSpeedMultiplier = 1.5f;
     [SerializeField] private float patrolMinX = -4f;
     [SerializeField] private float patrolMaxX = 4f;
     [SerializeField] private float wallCheckDistance = .55f;
     [SerializeField] private float groundCheckDistance = 1.3f;
-    [Header("Detection (world units)")]
+
+    [Header("Detection (Ground Bots)")]
     [SerializeField] private float scoutFrontRange = 6f;
     [SerializeField] private float scoutBackRange = 3f;
     [SerializeField] private float sniperRange = 7f;
-    [SerializeField] private float droneDetectionRadius = 8f;
     [SerializeField] private float verticalDetectionTolerance = 2.5f;
-    [Header("Ranged spacing")]
+    [Tooltip("플레이어 발견 후 어그로 전환까지 걸리는 인식 시간(초)")]
+    [SerializeField] private float recognitionDelay = .35f;
+
+    [Header("Drone - Detection & Movement")]
+    [Tooltip("현재 드론 상태 (Free: 자유 순찰, Recognizing: 플레이어 인식, Aggro: 어그로 추적/접촉 공격)")]
+    [SerializeField] private DroneState droneState = DroneState.Free;
+    [Tooltip("드론 원본 스프라이트가 왼쪽을 보고 그려져 있으면 체크")]
+    [SerializeField] private bool droneSpriteFacesLeft = true;
+    [Tooltip("플레이어를 감지해 인식 상태로 전환되는 범위")]
+    [SerializeField] private float droneDetectionRadius = 8f;
+    [Tooltip("어그로가 풀리고 자유 상태로 돌아가는 거리 (0이면 한번 인식 후 해제되지 않음)")]
+    [SerializeField] private float droneLoseAggroRadius = 0f;
+    [Tooltip("혼자 자유롭게 순찰(날기)할 때의 기본 이동 속도")]
+    [SerializeField] private float droneFreePatrolSpeed = 0.8f;
+    [Tooltip("자유 순찰 시 스폰 지점 기준 좌우 왕복 반경 (0이면 벽에 닿을 때까지 비행)")]
+    [SerializeField] private float droneFreePatrolRadius = 3.5f;
+    [Tooltip("플레이어에게 다가갈 때 자유 순찰 속도 대비 이동 속도 배율 (기본 1.7배)")]
+    [SerializeField] private float droneAggroSpeedMultiplier = 1.7f;
+    [Tooltip("플레이어 중심 기준 목표 Y 오프셋 (0이면 플레이어 몸통 정중앙으로 돌진)")]
+    [SerializeField] private float droneTargetOffsetY = 0f;
+
+    [Header("Drone - Contact Attack & Hit Stun")]
+    [Tooltip("봇에 닿았을 때 플레이어에게 입히는 데미지")]
+    [SerializeField] private int droneContactDamage = 1;
+    [Tooltip("봇에 닿았을 때 플레이어를 밀어내는 넉백")]
+    [SerializeField] private Vector2 droneContactKnockback = new Vector2(4.5f, 2.5f);
+    [Tooltip("연속 접촉 공격 판정 최소 간격(초)")]
+    [SerializeField] private float droneContactCooldown = 0.4f;
+    [Tooltip("체크 시 어그로(공격) 상태일 때만 접촉 데미지 발생")]
+    [SerializeField] private bool droneContactOnlyInAggro = true;
+    [Tooltip("플레이어에게 공격을 맞았을 때 그 자리에서 멈춰 있는 경직 시간(초)")]
+    [SerializeField] private float droneHitStunDuration = 0.35f;
+    [Tooltip("피격 경직 중 밀려나는 넉백 배율 (0이면 제자리에 완전히 멈춤)")]
+    [SerializeField] private float droneHitKnockbackScale = 0f;
+
+    [Header("Ranged Spacing (Sniper)")]
     [Tooltip("원거리 봇이 유지하려는 플레이어와의 가로 거리")]
     [SerializeField] private float rangedPreferredDistance = 4.5f;
     [Tooltip("유지 거리에서 이만큼 벗어나도 제자리에서 공격")]
     [SerializeField] private float rangedDistanceTolerance = 0.75f;
     [Tooltip("거리를 조절할 때 이동 속도 배율")]
     [SerializeField] private float rangedRepositionSpeedMultiplier = 1f;
-    [SerializeField] private float recognitionDelay = .35f;
-    [Header("Attacks")]
+
+    [Header("Attacks (Ground Bots)")]
     [SerializeField] private int meleeDamage = 1;
     [SerializeField] private float meleeRange = 1.0f;
     [Tooltip("근접 공격 판정의 세로 허용 거리")]
     [SerializeField] private float meleeVerticalRange = 1.2f;
     [SerializeField] private float meleeCooldown = 1.0f;
     [SerializeField] private int projectileDamage = 1;
-    [SerializeField] private float projectileSpeed = 6f;
-    [SerializeField] private float projectileCooldown = 1.8f;
-    [SerializeField] private float projectileLifetime = 3f;
-    [SerializeField] private Vector2 projectileKnockback = new Vector2(3f, 2f);
     [SerializeField] private float sniperLaserLength = 12f;
     [SerializeField] private float laserCooldown = 1.8f;
     [SerializeField] private float laserTelegraphTime = .55f;
     [SerializeField] private float laserVerticalTolerance = .65f;
     [SerializeField] private float laserWidth = .055f;
+
     [Header("Visual")]
     [SerializeField] private Color alertColor = Color.yellow;
 
     private SpriteRenderer spriteRenderer;
+    private DroneBotAnimation droneAnimation;
+    private HitReaction hitReaction;
     private Health health;
     private Rigidbody2D body;
+    private Collider2D selfCollider;
+    private Collider2D playerCollider;
+    private Vector2 spawnPosition;
+    private Vector2 droneKnockbackVelocity;
     private int direction = 1;
     private bool alerted, dead, recognizing;
     private float recognitionTimer, attackTimer, laserTelegraphTimer;
+    private float droneHitStunTimer, droneContactTimer;
     private LineRenderer laser;
     private Color baseColor;
+
+    public DroneState CurrentDroneState => droneState;
+    public bool IsDroneStunned => droneHitStunTimer > 0f || (hitReaction != null && hitReaction.IsStunned);
 
     private void Awake()
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
+        droneAnimation = GetComponent<DroneBotAnimation>();
+        hitReaction = GetComponent<HitReaction>();
         health = GetComponent<Health>();
+        selfCollider = GetComponent<Collider2D>();
         body = GetComponent<Rigidbody2D>();
         if (body == null) body = gameObject.AddComponent<Rigidbody2D>();
         body.bodyType = RigidbodyType2D.Dynamic;
@@ -69,12 +117,30 @@ public class TestBotAI : MonoBehaviour
         body.constraints = RigidbodyConstraints2D.FreezeRotation;
         body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         body.interpolation = RigidbodyInterpolation2D.Interpolate;
+
+        spawnPosition = transform.position;
+        if (type == BotType.Drone) ApplyDroneFlip();
+
         if (spriteRenderer) baseColor = spriteRenderer.color;
         health.Configure(Team.Enemy, Mathf.Max(1, Mathf.RoundToInt(maxHealth)), 0f);
         health.Died += OnDied;
+        health.Damaged += OnDamaged;
         if (GetComponent<EnemyHealthBar>() == null) gameObject.AddComponent<EnemyHealthBar>();
-        if (player == null) { GameObject p = GameObject.FindGameObjectWithTag("Player"); if (p) player = p.transform; }
+        ResolvePlayer();
         EnsureLaser();
+    }
+
+    private void ResolvePlayer()
+    {
+        if (player == null)
+        {
+            GameObject p = GameObject.FindGameObjectWithTag("Player");
+            if (p) player = p.transform;
+        }
+        if (player != null && playerCollider == null)
+        {
+            playerCollider = player.GetComponent<Collider2D>();
+        }
     }
 
     private void EnsureLaser()
@@ -92,24 +158,52 @@ public class TestBotAI : MonoBehaviour
         laser.sortingOrder = 6;
     }
 
+    private void SetAlertTint()
+    {
+        if (spriteRenderer && droneAnimation == null) spriteRenderer.color = alertColor;
+    }
+
     private void Update()
     {
-        EnsureLaser(); // Bootstrap이 런타임에 봇 종류를 지정하는 경우에도 저격 레이저 생성
+        EnsureLaser();
         if (dead) return;
-        if (player == null) { GameObject p = GameObject.FindGameObjectWithTag("Player"); if (p) player = p.transform; else { Patrol(); return; } }
+
+        if (player == null) ResolvePlayer();
+
+        if (type == BotType.Drone)
+        {
+            UpdateDroneStateMachine();
+            return;
+        }
+
+        if (player == null) { Patrol(); return; }
+
         Vector2 delta = player.position - transform.position;
         float dx = Mathf.Abs(delta.x), dy = Mathf.Abs(delta.y);
         bool sees = type == BotType.Scout
             ? dx <= (delta.x * direction >= 0 ? scoutFrontRange : scoutBackRange) && dy <= verticalDetectionTolerance
-            : type == BotType.Sniper ? dx <= sniperRange && dy <= verticalDetectionTolerance
-            : delta.magnitude <= droneDetectionRadius;
+            : dx <= sniperRange && dy <= verticalDetectionTolerance;
 
-        if (!alerted && sees) { alerted = true; recognizing = true; recognitionTimer = recognitionDelay; if (spriteRenderer) spriteRenderer.color = alertColor; }
+        if (!alerted && sees)
+        {
+            alerted = true;
+            recognizing = true;
+            recognitionTimer = recognitionDelay;
+            SetAlertTint();
+        }
         if (recognizing)
         {
             recognitionTimer -= Time.deltaTime;
-            if (recognitionTimer <= 0f) { recognizing = false; if (spriteRenderer) spriteRenderer.color = baseColor; }
-            else { if (type == BotType.Sniper) UpdateLaser(false); return; }
+            if (recognitionTimer <= 0f)
+            {
+                recognizing = false;
+                if (spriteRenderer) spriteRenderer.color = baseColor;
+            }
+            else
+            {
+                if (type == BotType.Sniper) UpdateLaser(false);
+                return;
+            }
         }
         if (!alerted) { Patrol(); return; }
 
@@ -119,7 +213,203 @@ public class TestBotAI : MonoBehaviour
         {
             case BotType.Scout: UpdateScout(delta); break;
             case BotType.Sniper: UpdateSniper(delta); break;
-            case BotType.Drone: UpdateDrone(delta); break;
+        }
+    }
+
+    private void UpdateDroneStateMachine()
+    {
+        if (droneContactTimer > 0f)
+            droneContactTimer -= Time.deltaTime;
+
+        // 피격 경직 처리: 그 자리에서 잠깐 멈춘 뒤 경직이 풀리면 다시 플레이어에게 다가감
+        if (droneHitStunTimer > 0f)
+        {
+            droneHitStunTimer -= Time.deltaTime;
+            if (droneHitKnockbackScale <= 0.001f)
+            {
+                SetDroneVelocity(Vector2.zero);
+            }
+            else if (hitReaction == null || !hitReaction.IsStunned)
+            {
+                droneKnockbackVelocity = Vector2.Lerp(droneKnockbackVelocity, Vector2.zero, Time.deltaTime * 14f);
+                SetDroneVelocity(droneKnockbackVelocity);
+            }
+
+            if (droneHitStunTimer <= 0f)
+            {
+                droneKnockbackVelocity = Vector2.zero;
+                if (hitReaction == null || !hitReaction.IsStunned)
+                    SetDroneVelocity(Vector2.zero);
+            }
+            return;
+        }
+
+        if (hitReaction != null && hitReaction.IsStunned)
+            return;
+
+        if (player == null)
+        {
+            EnterDroneFree();
+            PatrolDroneFree();
+            return;
+        }
+
+        Vector2 playerCenter = playerCollider != null ? (Vector2)playerCollider.bounds.center : (Vector2)player.position;
+        Vector2 delta = playerCenter - (Vector2)transform.position;
+        float distanceToPlayer = delta.magnitude;
+
+        switch (droneState)
+        {
+            case DroneState.Free:
+                if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Fly);
+                if (distanceToPlayer <= droneDetectionRadius)
+                {
+                    TriggerDroneRecognition();
+                    return;
+                }
+                PatrolDroneFree();
+                break;
+
+            case DroneState.Recognizing:
+                SetDroneVelocity(Vector2.zero);
+                FaceTowards(delta.x);
+                if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Scan);
+
+                recognitionTimer -= Time.deltaTime;
+                if (recognitionTimer <= 0f)
+                {
+                    recognizing = false;
+                    droneState = DroneState.Aggro;
+                    if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Attack);
+                }
+                break;
+
+            case DroneState.Aggro:
+                if (droneLoseAggroRadius > 0f && distanceToPlayer > droneLoseAggroRadius)
+                {
+                    EnterDroneFree();
+                    return;
+                }
+
+                FaceTowards(delta.x);
+                if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Attack);
+
+                // 혼자 움직이는 속도(droneFreePatrolSpeed) * 배율(droneAggroSpeedMultiplier, 기본 1.7배) 속도로 추적
+                Vector2 targetPos = playerCenter + Vector2.up * droneTargetOffsetY;
+                Vector2 toTarget = targetPos - (Vector2)transform.position;
+                Vector2 moveDir = toTarget.sqrMagnitude > 0.0001f ? toTarget.normalized : Vector2.zero;
+
+                if (Mathf.Abs(moveDir.x) > 0.01f &&
+                    Physics2D.Raycast(transform.position, Vector2.right * Mathf.Sign(moveDir.x), wallCheckDistance, GameLayers.GroundMaskValue))
+                {
+                    moveDir.x = 0f;
+                }
+
+                float aggroChaseSpeed = droneFreePatrolSpeed * Mathf.Max(0f, droneAggroSpeedMultiplier);
+                SetDroneVelocity(moveDir * aggroChaseSpeed);
+                break;
+        }
+    }
+
+    private void EnterDroneFree()
+    {
+        alerted = false;
+        recognizing = false;
+        droneState = DroneState.Free;
+        if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Fly);
+    }
+
+    private void TriggerDroneRecognition()
+    {
+        alerted = true;
+        recognizing = true;
+        recognitionTimer = recognitionDelay;
+        droneState = DroneState.Recognizing;
+        SetAlertTint();
+        SetDroneVelocity(Vector2.zero);
+        if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Scan);
+    }
+
+    private void PatrolDroneFree()
+    {
+        bool hitWall = Physics2D.Raycast(transform.position, Vector2.right * direction, wallCheckDistance, GameLayers.GroundMaskValue);
+        bool outOfBounds = false;
+        if (droneFreePatrolRadius > 0f)
+        {
+            float offsetX = transform.position.x - spawnPosition.x;
+            if ((direction > 0 && offsetX >= droneFreePatrolRadius) || (direction < 0 && offsetX <= -droneFreePatrolRadius))
+                outOfBounds = true;
+        }
+
+        if (hitWall || outOfBounds) direction *= -1;
+        SetDroneVelocity(new Vector2(direction * droneFreePatrolSpeed, 0f));
+        ApplyDroneFlip();
+    }
+
+    private void FaceTowards(float deltaX)
+    {
+        if (Mathf.Abs(deltaX) > 0.01f)
+            direction = deltaX >= 0f ? 1 : -1;
+        ApplyDroneFlip();
+    }
+
+    private void ApplyDroneFlip()
+    {
+        if (spriteRenderer == null) return;
+        spriteRenderer.flipX = droneSpriteFacesLeft ? direction > 0 : direction < 0;
+    }
+
+    private void SetDroneVelocity(Vector2 velocity)
+    {
+        if (body == null) return;
+        body.velocity = velocity;
+    }
+
+    private void OnCollisionEnter2D(Collision2D collision)
+    {
+        TryDroneContactAttack(collision.collider);
+    }
+
+    private void OnCollisionStay2D(Collision2D collision)
+    {
+        TryDroneContactAttack(collision.collider);
+    }
+
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        TryDroneContactAttack(other);
+    }
+
+    private void OnTriggerStay2D(Collider2D other)
+    {
+        TryDroneContactAttack(other);
+    }
+
+    private void TryDroneContactAttack(Collider2D other)
+    {
+        if (dead || type != BotType.Drone || other == null) return;
+        if (IsDroneStunned) return;
+        if (droneContactOnlyInAggro && droneState != DroneState.Aggro) return;
+        if (droneContactTimer > 0f) return;
+
+        Health target = other.GetComponentInParent<Health>();
+        if (target == null || target.Team != Team.Player || target.IsDead) return;
+
+        float pushDir = target.transform.position.x >= transform.position.x ? 1f : -1f;
+        Vector2 knockback = new Vector2(pushDir * Mathf.Abs(droneContactKnockback.x), droneContactKnockback.y);
+
+        DamageInfo info = new DamageInfo
+        {
+            amount = Mathf.Max(1, droneContactDamage),
+            knockback = knockback,
+            sourceTeam = Team.Enemy,
+            source = gameObject,
+            hitPoint = other.ClosestPoint(transform.position)
+        };
+
+        if (target.TakeDamage(info))
+        {
+            droneContactTimer = droneContactCooldown;
         }
     }
 
@@ -137,32 +427,8 @@ public class TestBotAI : MonoBehaviour
         }
     }
 
-    private void UpdateDrone(Vector2 delta)
-    {
-        // 원거리 공격을 위해 플레이어에게 달라붙지 않고 지정한 가로 거리를 유지한다.
-        float distanceX = Mathf.Abs(delta.x);
-        float preferred = Mathf.Max(0.1f, rangedPreferredDistance);
-        float tolerance = Mathf.Max(0f, rangedDistanceTolerance);
-        float moveDir = 0f;
-        if (distanceX > preferred + tolerance) moveDir = direction;       // 너무 멀면 접근
-        else if (distanceX < preferred - tolerance) moveDir = -direction; // 너무 가까우면 후퇴
-        if (Mathf.Abs(delta.y) > verticalDetectionTolerance) moveDir = 0f;
-        SetHorizontalSpeed(moveDir * patrolSpeed * rangedRepositionSpeedMultiplier);
-
-        attackTimer -= Time.deltaTime;
-        if (distanceX <= droneDetectionRadius && distanceX >= preferred - tolerance && distanceX <= preferred + tolerance &&
-            Mathf.Abs(delta.y) <= verticalDetectionTolerance && attackTimer <= 0f)
-        {
-            attackTimer = projectileCooldown;
-            Vector2 from = transform.position + Vector3.up * 0.1f;
-            Vector2 target = (Vector2)player.position - from;
-            EnemyBullet.Spawn(from, target.normalized, projectileSpeed, projectileDamage, projectileKnockback, projectileLifetime, gameObject);
-        }
-    }
-
     private void UpdateSniper(Vector2 delta)
     {
-        // 저격봇도 너무 가까워지면 후퇴하고, 사격 거리 밖이면 천천히 접근한다.
         float distanceX = Mathf.Abs(delta.x);
         float preferred = Mathf.Max(0.1f, rangedPreferredDistance);
         float tolerance = Mathf.Max(0f, rangedDistanceTolerance);
@@ -194,7 +460,6 @@ public class TestBotAI : MonoBehaviour
                     Health target = hit.collider.GetComponentInParent<Health>();
                     if (target != null && target.Team == Team.Player && Mathf.Abs(origin.y - player.position.y) <= laserVerticalTolerance)
                         DamagePlayer(projectileDamage, new Vector2(direction * 3f, 1f));
-                    // 첫 번째 유효한 장애물/대상에서 레이저가 막힌다.
                     break;
                 }
             }
@@ -222,14 +487,10 @@ public class TestBotAI : MonoBehaviour
 
     private void Patrol()
     {
-        if (type != BotType.Drone)
-        {
-            Vector2 origin = transform.position;
-            bool wall = Physics2D.Raycast(origin, Vector2.right * direction, wallCheckDistance, GameLayers.GroundMaskValue);
-            bool groundAhead = Physics2D.Raycast(origin + Vector2.right * direction * .45f + Vector2.down * .25f, Vector2.down, groundCheckDistance, GameLayers.GroundMaskValue);
-            if (transform.position.x <= patrolMinX || transform.position.x >= patrolMaxX || wall || !groundAhead) direction *= -1;
-        }
-        else if (Physics2D.Raycast(transform.position, Vector2.right * direction, wallCheckDistance, GameLayers.GroundMaskValue)) direction *= -1;
+        Vector2 origin = transform.position;
+        bool wall = Physics2D.Raycast(origin, Vector2.right * direction, wallCheckDistance, GameLayers.GroundMaskValue);
+        bool groundAhead = Physics2D.Raycast(origin + Vector2.right * direction * .45f + Vector2.down * .25f, Vector2.down, groundCheckDistance, GameLayers.GroundMaskValue);
+        if (transform.position.x <= patrolMinX || transform.position.x >= patrolMaxX || wall || !groundAhead) direction *= -1;
         SetHorizontalSpeed(direction * patrolSpeed);
         if (spriteRenderer) spriteRenderer.flipX = direction < 0;
     }
@@ -239,8 +500,36 @@ public class TestBotAI : MonoBehaviour
         if (body == null) return;
         Vector2 velocity = body.velocity;
         velocity.x = speed;
-        if (type == BotType.Drone) velocity.y = 0f;
         body.velocity = velocity;
+    }
+
+    private void OnDamaged(DamageInfo info)
+    {
+        if (type == BotType.Drone)
+        {
+            if (droneState == DroneState.Free)
+            {
+                TriggerDroneRecognition();
+            }
+
+            // 그 자리에서 잠깐 멈추는 경직 진입 + 피격 프레임 재생
+            droneHitStunTimer = Mathf.Max(0f, droneHitStunDuration);
+            droneKnockbackVelocity = info.knockback * droneHitKnockbackScale;
+            if (hitReaction == null || !hitReaction.IsStunned)
+                SetDroneVelocity(droneKnockbackVelocity);
+
+            if (droneAnimation != null && droneHitStunTimer > 0f)
+                droneAnimation.PlayHit(droneHitStunTimer);
+            return;
+        }
+
+        if (!alerted)
+        {
+            alerted = true;
+            recognizing = true;
+            recognitionTimer = recognitionDelay;
+            SetAlertTint();
+        }
     }
 
     private void OnDied(Health h)
@@ -250,6 +539,7 @@ public class TestBotAI : MonoBehaviour
         GearReward.Spawn(transform.position, gearReward);
         Destroy(gameObject);
     }
+
     private void OnDrawGizmosSelected()
     {
         Vector3 origin = transform.position;
@@ -264,8 +554,26 @@ public class TestBotAI : MonoBehaviour
         {
             Gizmos.color = new Color(0.2f, 0.8f, 1f, 0.8f);
             Gizmos.DrawWireSphere(origin, droneDetectionRadius);
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(origin, rangedPreferredDistance);
+
+            Collider2D col = selfCollider != null ? selfCollider : GetComponent<Collider2D>();
+            if (col != null)
+            {
+                Gizmos.color = new Color(1f, 0.25f, 0.25f, 0.9f);
+                Gizmos.DrawWireCube(col.bounds.center, col.bounds.size);
+            }
+
+            if (droneLoseAggroRadius > 0f)
+            {
+                Gizmos.color = new Color(0.7f, 0.7f, 0.7f, 0.45f);
+                Gizmos.DrawWireSphere(origin, droneLoseAggroRadius);
+            }
+
+            if (droneFreePatrolRadius > 0f)
+            {
+                Vector3 center = Application.isPlaying ? (Vector3)spawnPosition : origin;
+                Gizmos.color = new Color(0.3f, 1f, 0.4f, 0.8f);
+                Gizmos.DrawLine(center + Vector3.left * droneFreePatrolRadius, center + Vector3.right * droneFreePatrolRadius);
+            }
         }
         else
         {
@@ -277,5 +585,5 @@ public class TestBotAI : MonoBehaviour
         }
     }
 
-    private void OnDestroy() { if (health != null) health.Died -= OnDied; }
+    private void OnDestroy() { if (health != null) { health.Died -= OnDied; health.Damaged -= OnDamaged; } }
 }

@@ -18,7 +18,7 @@ public class INVENTORYUI : MonoBehaviour
     public Text gearText;
     public Transform plantContainer;
     public Transform animalContainer;
-    public Transform materialContainer;   
+    public Transform materialContainer;   // 씨앗/소모품 (새로 추가)
     public GameObject entryPrefab;
 
     [Header("아이템 정보")]
