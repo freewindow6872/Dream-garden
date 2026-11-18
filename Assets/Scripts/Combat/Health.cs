@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 체력 컴포넌트. (기획서 2.3)
@@ -40,6 +40,14 @@ public class Health : MonoBehaviour
         maxHealth = Mathf.Max(1, max);
         hitInvulnerableTime = invulnerableTime;
         Current = maxHealth;
+        if (Changed != null) Changed(Current, maxHealth);
+    }
+
+    /// <summary>최대 체력을 변경한다. refill이 true면 현재 체력도 최대치로 채운다.</summary>
+    public void SetMax(int newMax, bool refill = true)
+    {
+        maxHealth = Mathf.Max(1, newMax);
+        Current = refill ? maxHealth : Mathf.Min(Current, maxHealth);
         if (Changed != null) Changed(Current, maxHealth);
     }
 

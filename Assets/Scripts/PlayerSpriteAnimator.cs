@@ -1,15 +1,42 @@
-using UnityEngine;
+﻿using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+using UnityEditor.SceneManagement;
+#endif
 
 /// <summary>
 /// 플레이어 스프라이트 애니메이션 통합 담당.
-/// 기존 PlayerController2D / PlayerCombat / Health 상태를 읽어 스프라이트만 교체한다.
-/// 이동/공격 판정과 게임플레이 로직은 변경하지 않는다.
+/// [ExecuteAlways]를 통해 플레이 버튼을 누르지 않은 에디트 모드에서도 기본 스프라이트(idel_01)를 즉시 적용한다.
 /// </summary>
+[ExecuteAlways]
 [RequireComponent(typeof(SpriteRenderer))]
 [RequireComponent(typeof(PlayerController2D))]
 public class PlayerSpriteAnimator : MonoBehaviour
 {
-    [Header("Animation Speed (frames per second)")]
+    [Header("Sprite Resource Settings")]
+    [SerializeField] private string resourcesFolder = "PlayerSprites";
+    [SerializeField] private string idlePrefix = "idel";
+    [SerializeField, Min(1)] private int idleFrameCount = 5;
+    [SerializeField] private string runPrefix = "run";
+    [SerializeField, Min(1)] private int runFrameCount = 8;
+    [SerializeField] private string dashPrefix = "dash";
+    [SerializeField, Min(1)] private int dashFrameCount = 2;
+    [SerializeField] private string jumpPrefix = "jump";
+    [SerializeField, Min(1)] private int jumpFrameCount = 2;
+    [SerializeField] private string airPrefix = "air";
+    [SerializeField, Min(1)] private int airFrameCount = 2;
+    [SerializeField] private string fallPrefix = "fall";
+    [SerializeField, Min(1)] private int fallFrameCount = 2;
+    [SerializeField] private string attack1Prefix = "attack_1";
+    [SerializeField, Min(1)] private int attack1FrameCount = 4;
+    [SerializeField] private string attack2Prefix = "attack_2";
+    [SerializeField, Min(1)] private int attack2FrameCount = 4;
+    [SerializeField] private string hurtPrefix = "hurt";
+    [SerializeField, Min(1)] private int hurtFrameCount = 1;
+    [SerializeField] private string deathPrefix = "death";
+    [SerializeField, Min(1)] private int deathFrameCount = 6;
+
+    [Header("Animation Speed (FPS)")]
     [SerializeField] private float idleFps = 7f;
     [SerializeField] private float runFps = 12f;
     [SerializeField] private float dashFps = 12f;
@@ -18,8 +45,13 @@ public class PlayerSpriteAnimator : MonoBehaviour
     [SerializeField] private float fallFps = 9f;
     [SerializeField] private float hurtFps = 10f;
     [SerializeField] private float deathFps = 8f;
+
+    [Header("State Thresholds & Timings")]
     [SerializeField] private float moveThreshold = 0.15f;
     [SerializeField] private float verticalStateThreshold = 0.5f;
+    [SerializeField] private float hurtDuration = 0.25f;
+    [SerializeField] private float defaultAttackDuration = 0.26f;
+    [SerializeField] private int secondAttackComboIndex = 2;
 
     private SpriteRenderer spriteRenderer;
     private PlayerController2D controller;
@@ -46,32 +78,16 @@ public class PlayerSpriteAnimator : MonoBehaviour
 
     private void Awake()
     {
-        spriteRenderer = GetComponent<SpriteRenderer>();
-        controller = GetComponent<PlayerController2D>();
-        combat = GetComponent<PlayerCombat>();
-        health = GetComponent<Health>();
-
-        idleFrames = LoadFrames("idel", 5);
-        runFrames = LoadFrames("run", 8);
-        dashFrames = LoadFrames("dash", 2);
-
-        jumpFrames = LoadFrames("jump", 2);
-        airFrames = LoadFrames("air", 2);
-        fallFrames = LoadFrames("fall", 2);
-
-        attack1Frames = LoadFrames("attack_1", 4);
-        attack2Frames = LoadFrames("attack_2", 4);
-        hurtFrames = LoadFrames("hurt", 1);
-        deathFrames = LoadFrames("death", 6);
-
-        spriteRenderer.color = Color.white;
-        SetState(AnimationState.Idle, true);
+        InitializeReferencesAndFrames();
+        ApplyPreviewSpriteIfNeeded();
     }
 
     private void OnEnable()
     {
-        if (combat == null) combat = GetComponent<PlayerCombat>();
-        if (health == null) health = GetComponent<Health>();
+        InitializeReferencesAndFrames();
+        ApplyPreviewSpriteIfNeeded();
+
+        if (!Application.isPlaying) return;
 
         if (combat != null) combat.AttackStarted += OnAttackStarted;
         if (health != null)
@@ -83,6 +99,8 @@ public class PlayerSpriteAnimator : MonoBehaviour
 
     private void OnDisable()
     {
+        if (!Application.isPlaying) return;
+
         if (combat != null) combat.AttackStarted -= OnAttackStarted;
         if (health != null)
         {
@@ -91,16 +109,78 @@ public class PlayerSpriteAnimator : MonoBehaviour
         }
     }
 
+    private void OnValidate()
+    {
+        InitializeReferencesAndFrames();
+        ApplyPreviewSpriteIfNeeded();
+    }
+
+    private void InitializeReferencesAndFrames()
+    {
+        if (spriteRenderer == null) spriteRenderer = GetComponent<SpriteRenderer>();
+        if (controller == null) controller = GetComponent<PlayerController2D>();
+        if (combat == null) combat = GetComponent<PlayerCombat>();
+        if (health == null) health = GetComponent<Health>();
+
+        if (idleFrames == null || idleFrames.Length != idleFrameCount)
+            idleFrames = LoadFrames(idlePrefix, idleFrameCount);
+
+        if (!Application.isPlaying) return;
+
+        runFrames = LoadFrames(runPrefix, runFrameCount);
+        dashFrames = LoadFrames(dashPrefix, dashFrameCount);
+        jumpFrames = LoadFrames(jumpPrefix, jumpFrameCount);
+        airFrames = LoadFrames(airPrefix, airFrameCount);
+        fallFrames = LoadFrames(fallPrefix, fallFrameCount);
+        attack1Frames = LoadFrames(attack1Prefix, attack1FrameCount);
+        attack2Frames = LoadFrames(attack2Prefix, attack2FrameCount);
+        hurtFrames = LoadFrames(hurtPrefix, hurtFrameCount);
+        deathFrames = LoadFrames(deathPrefix, deathFrameCount);
+
+        if (spriteRenderer != null)
+            spriteRenderer.color = Color.white;
+        SetState(AnimationState.Idle, true);
+    }
+
+    public void ApplyPreviewSpriteIfNeeded()
+    {
+        if (spriteRenderer == null) spriteRenderer = GetComponent<SpriteRenderer>();
+        if (spriteRenderer == null) return;
+
+        if (idleFrames == null || idleFrames.Length == 0 || idleFrames[0] == null)
+            idleFrames = LoadFrames(idlePrefix, idleFrameCount);
+
+        if (idleFrames != null && idleFrames.Length > 0 && idleFrames[0] != null)
+        {
+            bool isPlaceholder = spriteRenderer.sprite == null
+                || spriteRenderer.sprite.name == "Square"
+                || spriteRenderer.sprite.name == "White";
+
+            if (!Application.isPlaying && isPlaceholder)
+            {
+                spriteRenderer.sprite = idleFrames[0];
+                spriteRenderer.color = Color.white;
+#if UNITY_EDITOR
+                EditorUtility.SetDirty(spriteRenderer);
+                if (!EditorApplication.isPlayingOrWillChangePlaymode && gameObject.scene.IsValid())
+                    EditorSceneManager.MarkSceneDirty(gameObject.scene);
+#endif
+            }
+        }
+    }
+
     private Sprite[] LoadFrames(string prefix, int count)
     {
-        Sprite[] frames = new Sprite[count];
-        for (int i = 0; i < count; i++)
-            frames[i] = Resources.Load<Sprite>("PlayerSprites/" + prefix + "_" + (i + 1).ToString("00"));
+        Sprite[] frames = new Sprite[Mathf.Max(1, count)];
+        for (int i = 0; i < frames.Length; i++)
+            frames[i] = Resources.Load<Sprite>(resourcesFolder + "/" + prefix + "_" + (i + 1).ToString("00"));
         return frames;
     }
 
     private void Update()
     {
+        if (!Application.isPlaying) return;
+
         if (isDead)
         {
             UpdateOneShot(deathFrames, deathFps, true);
@@ -127,8 +207,7 @@ public class PlayerSpriteAnimator : MonoBehaviour
             if (!oneShotActive || currentState != AnimationState.Attack)
                 SetState(AnimationState.Attack, true);
 
-            Sprite[] attackFrames = GetAttackFrames();
-            UpdateTimedAttack(attackFrames);
+            UpdateTimedAttack(GetAttackFrames());
             return;
         }
 
@@ -163,7 +242,7 @@ public class PlayerSpriteAnimator : MonoBehaviour
 
         oneShotDuration = combat != null
             ? Mathf.Max(0.05f, combat.CurrentStepDuration)
-            : 0.26f;
+            : defaultAttackDuration;
 
         oneShotActive = true;
         SetState(AnimationState.Attack, true);
@@ -171,8 +250,7 @@ public class PlayerSpriteAnimator : MonoBehaviour
 
     private Sprite[] GetAttackFrames()
     {
-        // 0번/1번 콤보는 attack_1, 마지막 2번 콤보는 attack_2
-        return combat != null && combat.ComboIndex == 2 ? attack2Frames : attack1Frames;
+        return combat != null && combat.ComboIndex == secondAttackComboIndex ? attack2Frames : attack1Frames;
     }
 
     private void UpdateTimedAttack(Sprite[] frames)
@@ -199,7 +277,7 @@ public class PlayerSpriteAnimator : MonoBehaviour
         if (isDead) return;
 
         isHurt = true;
-        hurtTimer = 0.25f;
+        hurtTimer = hurtDuration;
         oneShotActive = true;
         SetState(AnimationState.Hurt, true);
     }
@@ -295,3 +373,24 @@ public class PlayerSpriteAnimator : MonoBehaviour
         }
     }
 }
+
+#if UNITY_EDITOR
+[InitializeOnLoad]
+public static class PlayerEditorSpriteSync
+{
+    static PlayerEditorSpriteSync()
+    {
+        EditorApplication.delayCall += SyncAllPlayersInScene;
+        EditorSceneManager.sceneOpened += (_, __) => EditorApplication.delayCall += SyncAllPlayersInScene;
+    }
+
+    [MenuItem("DreamGarden/Apply Player Preview Sprites")]
+    public static void SyncAllPlayersInScene()
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+        PlayerSpriteAnimator[] animators = Object.FindObjectsOfType<PlayerSpriteAnimator>(true);
+        for (int i = 0; i < animators.Length; i++)
+            animators[i].ApplyPreviewSpriteIfNeeded();
+    }
+}
+#endif

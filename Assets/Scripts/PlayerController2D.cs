@@ -1,9 +1,8 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 플레이어 이동. (기획서 2.2)
 ///  - 기본 점프 / 대시 / 이단 점프 (대시·이단 점프는 "강화 시스템으로 획득")
-///  - 기존 공개 API(IsGrounded/HorizontalSpeed/VerticalSpeed)는 그대로 유지
 /// </summary>
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerController2D : MonoBehaviour
@@ -17,6 +16,7 @@ public class PlayerController2D : MonoBehaviour
     [SerializeField] private float jumpForce = 13f;
     [SerializeField] private float coyoteTime = 0.12f;
     [SerializeField] private float jumpBufferTime = 0.12f;
+    [SerializeField, Range(0.1f, 1f)] private float variableJumpCutMultiplier = 0.5f;
     [SerializeField] private float fallGravityMultiplier = 2.2f;
     [SerializeField] private float lowJumpGravityMultiplier = 1.8f;
 
@@ -25,6 +25,7 @@ public class PlayerController2D : MonoBehaviour
     [SerializeField] private Transform groundCheck;
     [SerializeField] private Vector2 groundCheckSize = new Vector2(0.55f, 0.12f);
     [SerializeField] private LayerMask groundLayer;
+    [SerializeField] private float groundCheckMaxUpwardSpeed = 0.05f;
     [Tooltip("발이 발판 윗면보다 이 값 이상 아래에 있으면 '옆면/아래면 접촉'으로 보고 지면으로 치지 않음")]
     [SerializeField] private float topSurfaceTolerance = 0.08f;
     [Tooltip("플레이어 중심 x가 발판의 x 범위를 벗어나면 낙하 처리 (모서리에 걸쳐 서 있지 않게 함)")]
@@ -36,8 +37,10 @@ public class PlayerController2D : MonoBehaviour
     [Tooltip("true: 마찰 0 재질을 콜라이더에 적용해 벽/발판 옆면에 비벼 붙는 현상을 없앰")]
     [SerializeField] private bool removeWallFriction = true;
 
-    [Header("Visual")]
+    [Header("Visual & Hit Blink")]
     [SerializeField] private SpriteRenderer spriteRenderer;
+    [SerializeField] private float hitBlinkFrequency = 12f;
+    [SerializeField, Range(0f, 1f)] private float hitBlinkMinAlpha = 0.35f;
 
     [Header("Double Jump (기획서 2.2: 강화로 획득)")]
     [SerializeField] private int maxAirJumps = 1;
@@ -65,7 +68,7 @@ public class PlayerController2D : MonoBehaviour
     private float coyoteCounter;
     private float jumpBufferCounter;
     private bool isGrounded;
-    private int ledgeDir;                       // 0 = 모서리 걸침 아님, ±1 = 떨어질 방향
+    private int ledgeDir;
     private readonly Collider2D[] groundHits = new Collider2D[8];
 
     private int airJumpsLeft;
@@ -78,16 +81,14 @@ public class PlayerController2D : MonoBehaviour
     private float hurtTimer;
 
     public int FacingDir { get; private set; }
-    /// <summary>공격 중 등 방향 전환을 막고 싶을 때 PlayerCombat이 사용</summary>
     public bool FacingLocked { get; set; }
-    /// <summary>공격 중 이동 속도 배율 (1 = 정상)</summary>
     public float MoveSpeedMultiplier { get; set; }
     public bool InputLocked { get; private set; }
-    public bool IsDashing { get { return isDashing; } }
-    public bool CanAct { get { return !InputLocked && !isDashing && hurtTimer <= 0f; } }
+    public bool IsDashing => isDashing;
+    public bool CanAct => !InputLocked && !isDashing && hurtTimer <= 0f;
 
-    public bool DashUnlocked { get { return unlockAllForTesting || GameManager.Instance.Progress.dashUnlocked; } }
-    public bool DoubleJumpUnlocked { get { return unlockAllForTesting || GameManager.Instance.Progress.doubleJumpUnlocked; } }
+    public bool DashUnlocked => unlockAllForTesting || GameManager.Instance.Progress.dashUnlocked;
+    public bool DoubleJumpUnlocked => unlockAllForTesting || GameManager.Instance.Progress.doubleJumpUnlocked;
 
     public event System.Action Jumped;
     public event System.Action DashStarted;
@@ -109,8 +110,6 @@ public class PlayerController2D : MonoBehaviour
 
         FacingDir = 1;
         MoveSpeedMultiplier = 1f;
-
-        // 기존 씬의 값(3번 레이어)과 "Ground" 이름 레이어를 모두 지면으로 인정
         groundLayer = groundLayer.value | GameLayers.GroundMaskValue;
 
         if (spriteRenderer == null)
@@ -166,7 +165,6 @@ public class PlayerController2D : MonoBehaviour
         if (hurtTimer <= 0f)
             HandleMovement();
 
-        // 모서리에 걸쳐 있으면 바깥쪽으로 밀어서 확실히 낙하시킨다
         if (ledgeDir != 0 && !isGrounded)
         {
             float vx = rb.velocity.x;
@@ -176,8 +174,6 @@ public class PlayerController2D : MonoBehaviour
 
         ApplyBetterGravity();
     }
-
-    // ---------------------------------------------------------------- timers
 
     private void TickTimers()
     {
@@ -192,8 +188,6 @@ public class PlayerController2D : MonoBehaviour
         }
     }
 
-    // ---------------------------------------------------------------- ground
-
     private Vector2 GroundCheckCenter()
     {
         if (groundCheck != null) return groundCheck.position;
@@ -203,17 +197,12 @@ public class PlayerController2D : MonoBehaviour
         return new Vector2(b.center.x, b.min.y - groundCheckSize.y * 0.5f + 0.02f);
     }
 
-    /// <summary>
-    /// 지면 판정. 발판의 "윗면"에 서 있을 때만 지면으로 인정한다.
-    ///  - 발이 발판 윗면보다 아래 → 옆면/아랫면에 닿은 것 → 지면 아님 (벽 타고 점프 / 비벼짐 방지)
-    ///  - 중심 x가 발판 x 범위를 벗어남 → 모서리에 걸친 것 → 낙하 (ledgeDir 쪽으로 미끄러짐)
-    /// </summary>
     private void CheckGround()
     {
         bool standing = false;
         ledgeDir = 0;
 
-        if (col != null && rb.velocity.y <= 0.05f)
+        if (col != null && rb.velocity.y <= groundCheckMaxUpwardSpeed)
         {
             float feetY = col.bounds.min.y;
             float centerX = col.bounds.center.x;
@@ -225,8 +214,6 @@ public class PlayerController2D : MonoBehaviour
                 if (other == null || other == col || other.isTrigger) continue;
 
                 Bounds ob = other.bounds;
-
-                // 윗면 판정: 발이 발판 윗면 근처 또는 그 위에 있어야 함
                 if (feetY < ob.max.y - topSurfaceTolerance) continue;
 
                 bool centerOn = centerX >= ob.min.x && centerX <= ob.max.x;
@@ -237,7 +224,6 @@ public class PlayerController2D : MonoBehaviour
                     break;
                 }
 
-                // 모서리에만 걸친 상태: 바깥쪽으로 떨어뜨림
                 ledgeDir = centerX < ob.center.x ? -1 : 1;
             }
         }
@@ -262,8 +248,6 @@ public class PlayerController2D : MonoBehaviour
             jumpBufferCounter -= Time.deltaTime;
     }
 
-    // ---------------------------------------------------------------- jump
-
     private void HandleJumpInput()
     {
         bool pressed = GameInput.JumpDown;
@@ -287,17 +271,15 @@ public class PlayerController2D : MonoBehaviour
 
         if (GameInput.JumpUp && rb.velocity.y > 0f)
         {
-            rb.velocity = new Vector2(rb.velocity.x, rb.velocity.y * 0.5f);
+            rb.velocity = new Vector2(rb.velocity.x, rb.velocity.y * variableJumpCutMultiplier);
         }
     }
 
     private void DoJump(float force)
     {
         rb.velocity = new Vector2(rb.velocity.x, force);
-        if (Jumped != null) Jumped();
+        Jumped?.Invoke();
     }
-
-    // ---------------------------------------------------------------- dash
 
     private void HandleDashInput()
     {
@@ -323,7 +305,7 @@ public class PlayerController2D : MonoBehaviour
         rb.velocity = new Vector2(dashDir * dashSpeed, 0f);
 
         if (dashGrantsInvulnerability && health != null) health.SetForcedInvulnerable(true);
-        if (DashStarted != null) DashStarted();
+        DashStarted?.Invoke();
     }
 
     private void EndDash()
@@ -337,37 +319,23 @@ public class PlayerController2D : MonoBehaviour
         if (dashGrantsInvulnerability && health != null) health.SetForcedInvulnerable(false);
     }
 
-    // ---------------------------------------------------------------- movement
-
     private void HandleMovement()
     {
         float targetSpeed = moveInput * moveSpeed * MoveSpeedMultiplier;
         float speedDifference = targetSpeed - rb.velocity.x;
-
-        float accelRate = Mathf.Abs(targetSpeed) > 0.01f
-            ? acceleration
-            : deceleration;
-
-        float movement = speedDifference * accelRate;
-
-        rb.AddForce(Vector2.right * movement);
+        float accelRate = Mathf.Abs(targetSpeed) > 0.01f ? acceleration : deceleration;
+        rb.AddForce(Vector2.right * (speedDifference * accelRate));
     }
 
     private void ApplyBetterGravity()
     {
         if (rb.velocity.y < 0f)
         {
-            rb.AddForce(
-                Vector2.up * Physics2D.gravity.y * (fallGravityMultiplier - 1f),
-                ForceMode2D.Force
-            );
+            rb.AddForce(Vector2.up * Physics2D.gravity.y * (fallGravityMultiplier - 1f), ForceMode2D.Force);
         }
         else if (rb.velocity.y > 0f && !GameInput.JumpHeld)
         {
-            rb.AddForce(
-                Vector2.up * Physics2D.gravity.y * (lowJumpGravityMultiplier - 1f),
-                ForceMode2D.Force
-            );
+            rb.AddForce(Vector2.up * Physics2D.gravity.y * (lowJumpGravityMultiplier - 1f), ForceMode2D.Force);
         }
     }
 
@@ -377,11 +345,8 @@ public class PlayerController2D : MonoBehaviour
             FacingDir = moveInput > 0f ? 1 : -1;
 
         if (spriteRenderer != null)
-            // 스프라이트 원본이 왼쪽을 바라보므로 오른쪽 이동일 때 좌우 반전
             spriteRenderer.flipX = FacingDir > 0;
     }
-
-    // ---------------------------------------------------------------- hurt / lock
 
     private void OnDamaged(DamageInfo info)
     {
@@ -402,7 +367,7 @@ public class PlayerController2D : MonoBehaviour
 
         Color c = spriteRenderer.color;
         c.a = health.IsHitInvulnerable && !health.IsDead
-            ? (Mathf.Repeat(Time.unscaledTime * 12f, 1f) < 0.5f ? 0.35f : 1f)
+            ? (Mathf.Repeat(Time.unscaledTime * hitBlinkFrequency, 1f) < 0.5f ? hitBlinkMinAlpha : 1f)
             : 1f;
         spriteRenderer.color = c;
     }
@@ -413,7 +378,6 @@ public class PlayerController2D : MonoBehaviour
         if (locked) EndDash();
     }
 
-    /// <summary>공격 돌진(lunge) 등, 수평 속도를 순간적으로 더한다.</summary>
     public void AddHorizontalImpulse(float vx)
     {
         rb.velocity = new Vector2(rb.velocity.x + vx, rb.velocity.y);
@@ -426,20 +390,7 @@ public class PlayerController2D : MonoBehaviour
         Gizmos.DrawWireCube(center, groundCheckSize);
     }
 
-    // ---------------------------------------------------------------- public API (기존 유지)
-
-    public bool IsGrounded()
-    {
-        return isGrounded;
-    }
-
-    public float HorizontalSpeed()
-    {
-        return Mathf.Abs(rb.velocity.x);
-    }
-
-    public float VerticalSpeed()
-    {
-        return rb.velocity.y;
-    }
+    public bool IsGrounded() => isGrounded;
+    public float HorizontalSpeed() => Mathf.Abs(rb.velocity.x);
+    public float VerticalSpeed() => rb.velocity.y;
 }

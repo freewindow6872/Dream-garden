@@ -1,19 +1,21 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// 맵 에디터로 배치한 Stage/Markers/Goal 에 플레이어가 닿으면 스테이지 클리어.
-/// 씬에 따로 붙일 필요 없음: 플레이 시작 시 Goal 오브젝트를 찾아 자동으로 붙는다.
+/// 맵 에디터로 배치한 Stage/Markers/Goal 에 플레이어가 닿으면 스테이지 클리어 처리.
+/// RESULTSCREEN이 씬에 있으면 UIManager를 통해 결과창을 띄우고, 없으면 기본 클리어 UI를 표시한다.
 /// </summary>
 public class StageGoal : MonoBehaviour
 {
     [SerializeField] private Vector2 goalSize = new Vector2(1f, 1f);
+    [SerializeField] private KeyCode quickRestartKey = KeyCode.R;
 
     private PlayerController2D player;
     private Collider2D playerCol;
     private bool cleared;
+    private bool hasResultScreen;
 
-    public bool IsCleared { get { return cleared; } }
+    public bool IsCleared => cleared;
     public event System.Action Cleared;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -35,8 +37,8 @@ public class StageGoal : MonoBehaviour
     {
         if (cleared)
         {
-            if (Input.GetKeyDown(KeyCode.R))
-                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            if (!hasResultScreen && Input.GetKeyDown(quickRestartKey))
+                UIManager.Instance.LoadScene(SceneManager.GetActiveScene().name);
             return;
         }
 
@@ -50,14 +52,19 @@ public class StageGoal : MonoBehaviour
     private void Clear()
     {
         cleared = true;
-        player.SetInputLocked(true);
+        if (player != null) player.SetInputLocked(true);
         GameManager.Instance.Progress.MarkCleared(SceneManager.GetActiveScene().name);
-        if (Cleared != null) Cleared();
+        Cleared?.Invoke();
+
+        RESULTSCREEN result = FindObjectOfType<RESULTSCREEN>(true);
+        hasResultScreen = result != null;
+        if (hasResultScreen)
+            UIManager.Instance.ShowStageResult();
     }
 
     private void OnGUI()
     {
-        if (!cleared) return;
+        if (!cleared || hasResultScreen) return;
 
         GUIStyle big = new GUIStyle(GUI.skin.label)
         {
@@ -69,7 +76,7 @@ public class StageGoal : MonoBehaviour
         GUI.Label(new Rect(0, Screen.height * 0.35f, Screen.width, 80), "STAGE CLEAR", big);
 
         big.fontSize = 22;
-        GUI.Label(new Rect(0, Screen.height * 0.35f + 80, Screen.width, 40), "R : 다시 시작", big);
+        GUI.Label(new Rect(0, Screen.height * 0.35f + 80, Screen.width, 40), quickRestartKey + " : 다시 시작", big);
     }
 
     private void OnDrawGizmos()

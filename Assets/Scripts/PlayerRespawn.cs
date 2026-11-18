@@ -1,9 +1,10 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class PlayerRespawn : MonoBehaviour
 {
     [SerializeField] private Transform respawnPoint;
     [SerializeField] private float deathY = -10f;
+    [SerializeField] private bool applyFallDamage = false;
 
     private Rigidbody2D rb;
     private bool hasCustomPosition;
@@ -17,10 +18,14 @@ public class PlayerRespawn : MonoBehaviour
     private void Update()
     {
         if (transform.position.y < deathY)
-            Respawn();
+        {
+            if (applyFallDamage && HPManager.Instance != null)
+                HPManager.Instance.ApplyFallHazard(this);
+            else
+                Respawn();
+        }
     }
 
-    /// <summary>StageLoader가 스테이지 시작 지점을 리스폰 위치로 지정할 때 사용</summary>
     public void SetRespawnPosition(Vector3 position)
     {
         hasCustomPosition = true;

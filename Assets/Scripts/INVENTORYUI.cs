@@ -1,14 +1,10 @@
-﻿using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 
 public class INVENTORYUI : MonoBehaviour
 {
     public static INVENTORYUI Instance;
-
-    // I키로 열 수 없는 씬 (타이틀 계열)
-    static readonly string[] BLOCKEDSCENES = { "title", "GAMETITLE" };
 
     [Header("패널")]
     public GameObject panel;
@@ -18,13 +14,13 @@ public class INVENTORYUI : MonoBehaviour
     public Text gearText;
     public Transform plantContainer;
     public Transform animalContainer;
-    public Transform materialContainer;   // 씨앗/소모품 (새로 추가)
+    public Transform materialContainer;
     public GameObject entryPrefab;
 
     [Header("아이템 정보")]
     public ITEMDATABASE database;
 
-    bool allowed = true;
+    private bool allowed = true;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -57,18 +53,20 @@ public class INVENTORYUI : MonoBehaviour
     void Start()
     {
         if (closeButton != null) closeButton.onClick.AddListener(Close);
-        panel.SetActive(false);
-        ApplySceneRule(SceneManager.GetActiveScene().name);
+        if (panel != null) panel.SetActive(false);
+
+        string sceneName = SceneManager.GetActiveScene().name;
+        SetAllowed(UIManager.Instance != null ? UIManager.Instance.IsInventoryAllowed(sceneName) : true);
     }
 
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        ApplySceneRule(scene.name);
+        SetAllowed(UIManager.Instance != null ? UIManager.Instance.IsInventoryAllowed(scene.name) : true);
     }
 
-    void ApplySceneRule(string sceneName)
+    public void SetAllowed(bool canOpen)
     {
-        allowed = System.Array.IndexOf(BLOCKEDSCENES, sceneName) < 0;
+        allowed = canOpen;
         if (!allowed) Close();
     }
 
@@ -90,29 +88,34 @@ public class INVENTORYUI : MonoBehaviour
 
     public void Toggle()
     {
+        if (panel == null) return;
         if (panel.activeSelf) Close();
         else Open();
     }
 
     public void Open()
     {
-        if (!allowed) return;
+        if (!allowed || panel == null) return;
         Refresh();
         panel.SetActive(true);
+        if (UIManager.Instance != null) UIManager.Instance.SetPopupOpen("Inventory", true, false);
     }
 
     public void Close()
     {
         if (panel != null) panel.SetActive(false);
+        if (UIManager.Instance != null) UIManager.Instance.SetPopupOpen("Inventory", false, false);
     }
 
     void Refresh()
     {
-        gearText.text = "톱니바퀴  " + INVENTORY.Data.gears;
+        if (gearText != null) gearText.text = "톱니바퀴  " + INVENTORY.Data.gears;
 
         Clear(plantContainer);
         Clear(animalContainer);
         Clear(materialContainer);
+
+        if (database == null) return;
 
         bool anyPlant = false, anyAnimal = false, anyMaterial = false;
 
@@ -155,9 +158,9 @@ public class INVENTORYUI : MonoBehaviour
         if (!anyMaterial && materialContainer != null) AddEmpty(materialContainer);
     }
 
-    // count가 0이면 이름만, 1 이상이면 "이름  x개수"
     void AddEntry(Transform parent, ITEMDATA item, int count)
     {
+        if (parent == null || entryPrefab == null) return;
         GameObject go = Instantiate(entryPrefab, parent);
         go.SetActive(true);
 
@@ -178,6 +181,7 @@ public class INVENTORYUI : MonoBehaviour
 
     void AddEmpty(Transform parent)
     {
+        if (parent == null || entryPrefab == null) return;
         GameObject go = Instantiate(entryPrefab, parent);
         go.SetActive(true);
         Text label = go.GetComponentInChildren<Text>();
@@ -193,10 +197,10 @@ public class INVENTORYUI : MonoBehaviour
         foreach (Transform c in parent) Destroy(c.gameObject);
     }
 
-    // ---- 테스트용 (Play 중 컴포넌트 ⋮ 메뉴) ----
     [ContextMenu("TEST 데이터베이스 전체 지급")]
     void TestGrantAll()
     {
+        if (database == null) return;
         foreach (ITEMDATA it in database.items) INVENTORY.Data.itemNames.Add(it.itemName);
         INVENTORY.Save();
         Refresh();

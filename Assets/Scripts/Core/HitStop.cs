@@ -1,42 +1,70 @@
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 타격감용 히트스톱. (기획서 1.6: 타격감 우선)
-/// 주의: Time.timeScale을 직접 만지므로, 나중에 일시정지 기능을 넣으면 이 파일도 같이 수정할 것.
+/// 타격감용 히트스톱. UIManager가 일시정지 중일 때는 timeScale을 덮어쓰지 않는다.
 /// </summary>
 public class HitStop : MonoBehaviour
 {
     private static HitStop instance;
+    private static bool isQuitting;
+
+    [Header("히트스톱 설정")]
+    [SerializeField, Range(0.01f, 0.5f)] private float frozenTimeScale = 0.05f;
+    [SerializeField, Min(0.01f)] private float defaultDuration = 0.06f;
+
     private Coroutine routine;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetStatics() { instance = null; }
+    private static void ResetStatics()
+    {
+        instance = null;
+        isQuitting = false;
+    }
+
+    private void OnApplicationQuit()
+    {
+        isQuitting = true;
+    }
 
     public static void Do(float seconds)
     {
-        if (seconds <= 0f) return;
+        if (seconds <= 0f || isQuitting) return;
 
         if (instance == null)
         {
-            GameObject go = new GameObject("HitStop");
-            DontDestroyOnLoad(go);
-            instance = go.AddComponent<HitStop>();
+            instance = FindObjectOfType<HitStop>(true);
+            if (instance == null)
+            {
+                GameObject go = new GameObject("HitStop");
+                DontDestroyOnLoad(go);
+                instance = go.AddComponent<HitStop>();
+            }
         }
         instance.Begin(seconds);
     }
 
+    public static void DoDefault()
+    {
+        float dur = instance != null ? instance.defaultDuration : 0.06f;
+        Do(dur);
+    }
+
     private void Begin(float seconds)
     {
+        if (UIManager.HasInstance && UIManager.Instance.IsPaused) return;
         if (routine != null) StopCoroutine(routine);
         routine = StartCoroutine(Run(seconds));
     }
 
     private IEnumerator Run(float seconds)
     {
-        Time.timeScale = 0.05f;
+        Time.timeScale = frozenTimeScale;
         yield return new WaitForSecondsRealtime(seconds);
-        Time.timeScale = 1f;
+
+        if (!UIManager.HasInstance || !UIManager.Instance.IsPaused)
+            Time.timeScale = 1f;
+
         routine = null;
     }
 
@@ -45,7 +73,8 @@ public class HitStop : MonoBehaviour
         if (instance == this)
         {
             instance = null;
-            Time.timeScale = 1f;
+            if (!isQuitting && (!UIManager.HasInstance || !UIManager.Instance.IsPaused))
+                Time.timeScale = 1f;
         }
     }
 }

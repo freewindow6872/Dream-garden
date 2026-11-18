@@ -1,6 +1,5 @@
-using UnityEngine;
+﻿using UnityEngine;
 
-/// <summary>Test scene helper. Uses the existing player and map-editor geometry; it does not create platforms.</summary>
 public class AIBotTestBootstrap : MonoBehaviour
 {
     [Header("Bot spawn positions")]
@@ -10,7 +9,6 @@ public class AIBotTestBootstrap : MonoBehaviour
     [Header("Patrol limits")]
     [SerializeField] private Vector2 scoutPatrolX = new Vector2(-6f, 0f);
     [SerializeField] private Vector2 sniperPatrolX = new Vector2(0f, 4f);
-    [SerializeField] private Vector2 dronePatrolX = new Vector2(5f, 11f);
     [Header("Optional")]
     [SerializeField] private bool removeExistingCombatTestEnemies = true;
 
@@ -25,25 +23,46 @@ public class AIBotTestBootstrap : MonoBehaviour
             old = GameObject.Find("TrainingDummy"); if (old) Destroy(old);
         }
         if (FindObjectOfType<GoldCounter>() == null) new GameObject("Gold HUD").AddComponent<GoldCounter>();
-        CreateBot("Scout Bot", TestBotAI.BotType.Scout, scoutSpawn, new Color(.2f, .8f, .3f), playerObject ? playerObject.transform : null, scoutPatrolX);
-        CreateBot("Sniper Bot", TestBotAI.BotType.Sniper, sniperSpawn, new Color(.95f, .25f, .2f), playerObject ? playerObject.transform : null, sniperPatrolX);
-        CreateBot("Drone Bot", TestBotAI.BotType.Drone, droneSpawn, new Color(.2f, .65f, 1f), playerObject ? playerObject.transform : null, dronePatrolX);
+        CreateBot("Scout Bot", BotAI.BotType.Scout, scoutSpawn, new Color(.2f, .8f, .3f), playerObject ? playerObject.transform : null, scoutPatrolX);
+        CreateBot("Sniper Bot", BotAI.BotType.Sniper, sniperSpawn, new Color(.95f, .25f, .2f), playerObject ? playerObject.transform : null, sniperPatrolX);
+        CreateBot("Drone Bot", BotAI.BotType.Drone, droneSpawn, new Color(.2f, .65f, 1f), playerObject ? playerObject.transform : null, Vector2.zero);
     }
 
-    private void CreateBot(string objectName, TestBotAI.BotType type, Vector2 position, Color color, Transform target, Vector2 patrolX)
+    private void CreateBot(string objectName, BotAI.BotType type, Vector2 position, Color color, Transform target, Vector2 patrolX)
     {
-        GameObject go = new GameObject(objectName); go.transform.position = position; go.transform.localScale = new Vector3(.8f, .8f, 1f);
-        SpriteRenderer sr = go.AddComponent<SpriteRenderer>(); sr.sprite = RuntimeSprites.White; sr.color = color; sr.sortingOrder = 2;
-        BoxCollider2D box = go.AddComponent<BoxCollider2D>(); box.size = Vector2.one;
-        Rigidbody2D rb = go.AddComponent<Rigidbody2D>(); rb.gravityScale = type == TestBotAI.BotType.Drone ? 0f : 3f; rb.bodyType = RigidbodyType2D.Dynamic; rb.constraints = RigidbodyConstraints2D.FreezeRotation; rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-        Health health = go.AddComponent<Health>();
-        TestBotAI ai = go.AddComponent<TestBotAI>();
-        // Serialized values remain editable on the component; runtime setup only supplies type/target/spawn defaults.
-        SetPrivate(ai, "type", type); SetPrivate(ai, "player", target); SetPrivate(ai, "patrolMinX", patrolX.x); SetPrivate(ai, "patrolMaxX", patrolX.y);
+        GameObject go = new GameObject(objectName);
+        go.transform.position = position;
+        go.transform.localScale = new Vector3(.8f, .8f, 1f);
+
+        SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = RuntimeSprites.White;
+        sr.color = color;
+        sr.sortingOrder = 2;
+
+        BoxCollider2D box = go.AddComponent<BoxCollider2D>();
+        box.size = Vector2.one;
+
+        Rigidbody2D rb = go.AddComponent<Rigidbody2D>();
+        rb.gravityScale = type == BotAI.BotType.Drone ? 0f : 3f;
+        rb.bodyType = RigidbodyType2D.Dynamic;
+        rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+        rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+
+        go.AddComponent<Health>();
+        BotAI ai = go.AddComponent<BotAI>();
+        ai.type = type;
+        SetPrivate(ai, "player", target);
+        if (patrolX != Vector2.zero)
+        {
+            SetPrivate(ai, "usePatrolBounds", true);
+            SetPrivate(ai, "patrolMinX", patrolX.x);
+            SetPrivate(ai, "patrolMaxX", patrolX.y);
+        }
     }
-    private static void SetPrivate<T>(TestBotAI target, string field, T value)
+
+    private static void SetPrivate<T>(BotAI target, string field, T value)
     {
-        var f = typeof(TestBotAI).GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var f = typeof(BotAI).GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         if (f != null) f.SetValue(target, value);
     }
 }
