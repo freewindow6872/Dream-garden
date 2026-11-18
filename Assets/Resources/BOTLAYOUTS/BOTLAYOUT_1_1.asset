@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 66c371d60df072b4181694b0c2849f25, type: 3}
+  m_Name: BOTLAYOUT_1_1
+  m_EditorClassIdentifier: 
+  stage: 1
+  subStage: 1
+  entries:
+  - prefab: {fileID: 1000, guid: efdd759d10fe70a32f09a71778331b89, type: 3}
+    position: {x: 3.5, y: 1, z: 0}
+    rotationZ: 0
+    scale: {x: 0.8, y: 0.8, z: 1}
+  - prefab: {fileID: 1000, guid: 52564361cae597f47259db7ed81260b8, type: 3}
+    position: {x: 4, y: 0, z: 0}
+    rotationZ: 0
+    scale: {x: 0.8, y: 0.8, z: 1}
+  - prefab: {fileID: 1000, guid: 52564361cae597f47259db7ed81260b8, type: 3}
+    position: {x: 5, y: -0.5, z: 0}
+    rotationZ: 0
+    scale: {x: 0.8, y: 0.8, z: 1}
+  - prefab: {fileID: 1000, guid: 8ef3d9349681a072dcf571f903455615, type: 3}
+    position: {x: 7.5, y: -0.5, z: 0}
+    rotationZ: 0
+    scale: {x: 1, y: 1, z: 1}
+  - prefab: {fileID: 1000, guid: b8bf85b6bef44fe95b9c4ccd2b8f90b8, type: 3}
+    position: {x: 6.5, y: -0.5, z: 0}
+    rotationZ: 0
+    scale: {x: 1, y: 1, z: 1}
