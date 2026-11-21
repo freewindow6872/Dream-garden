@@ -74,6 +74,21 @@ public class EQUIPCONTROLLER : MonoBehaviour
             listPopup.SetActive(false);
         }
     }
+    public bool IsOpen
+    {
+        get
+        {
+            return (equipPanel != null && equipPanel.activeSelf)
+                || (listPopup != null && listPopup.activeSelf);
+        }
+    }
+
+    void Update()
+    {
+        if (!GARDENINPUT.CancelPressed) return;
+        if (listPopup.activeSelf) CloseList();
+        else if (equipPanel.activeSelf) BackToSubStage();
+    }
 
     public void CloseList() { listPopup.SetActive(false); }
     public void BackToSubStage() { equipPanel.SetActive(false); }
