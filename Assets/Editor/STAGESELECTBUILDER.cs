@@ -1,4 +1,4 @@
-/*using UnityEditor;
+using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -57,6 +57,18 @@ public static class STAGESELECTBUILDER
             }
         }
 
+        // ---- 옛 스테이지 선택 UI는 삭제하지 않고 비활성화만 ----
+        foreach (string n in new[] { "STAGEPANEL", "SUBSTAGEPANEL", "GAMESELECT" })
+        {
+            foreach (Transform t in Object.FindObjectsOfType<Transform>(true))
+            {
+                if (t.name == n && t.gameObject.activeSelf)
+                {
+                    Undo.RecordObject(t.gameObject, "옛 UI 비활성화");
+                    t.gameObject.SetActive(false);
+                }
+            }
+        }
 
         Sprite circle = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
         Color dark = new Color(0.12f, 0.12f, 0.12f, 1f);
@@ -88,6 +100,7 @@ public static class STAGESELECTBUILDER
         Text t4 = NewText("TEXT_STAGE4", root, "", 36, dark);
         PlaceAt(t4.rectTransform, new Vector2(0.5f, 0.06f), new Vector2(500f, 60f));
 
+        // ---- 1스테이지 영역 강조 (노란 테두리 느낌) ----
         Image highlight = NewImage("REGION1HIGHLIGHT", root, new Color(1f, 0.85f, 0.2f, 0.18f), null);
         Anchor(highlight.rectTransform, new Vector2(0f, 0.12f), new Vector2(0.5f, 0.8f));
         Outline outline = highlight.gameObject.AddComponent<Outline>();
@@ -222,4 +235,4 @@ public static class STAGESELECTBUILDER
         rt.anchoredPosition = Vector2.zero;
         rt.sizeDelta = size;
     }
-}*/
+}
