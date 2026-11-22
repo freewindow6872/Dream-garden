@@ -833,8 +833,8 @@ GameObject:
   - component: {fileID: 783863063}
   - component: {fileID: 783863062}
   - component: {fileID: 783863064}
-  m_Layer: 0
-  m_Name: Square
+  m_Layer: 3
+  m_Name: ground
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
