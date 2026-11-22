@@ -34,11 +34,30 @@ public class POTPANEL : MonoBehaviour
         closeButton.onClick.AddListener(Close);
     }
 
+    void Update()
+    {
+        if (IsOpen && GARDENINPUT.CancelPressed) Close();
+    }
+
+    // 다 자랐는지: 심은 뒤 클리어 횟수가 필요 횟수 이상이고, 자라서 될 식물이 지정되어 있음
+    public bool IsReady(POTSTATE state)
+    {
+        return state != null && state.planted
+            && seedItem != null && seedItem.growsInto != null
+            && INVENTORY.Data.clearCount - state.plantedAtClear >= seedItem.growAfterClears;
+    }
+
     public void Open(POTSPOT pot)
     {
+        if (IsOpen) return;
         current = pot;
         fertilizerToggle.SetIsOnWithoutNotify(false);
-        Refresh("");
+
+        // 다 자란 화분이면 열면서 바로 수확
+        POTSTATE state = INVENTORY.GetPot(pot.potId);
+        string message = IsReady(state) ? Harvest(state) : "";
+
+        Refresh(message);
         panel.SetActive(true);
     }
 
@@ -46,6 +65,19 @@ public class POTPANEL : MonoBehaviour
     {
         panel.SetActive(false);
         current = null;
+    }
+
+    string Harvest(POTSTATE state)
+    {
+        ITEMDATA plant = seedItem.growsInto;
+        bool isNew = !INVENTORY.IsOwned(plant);
+
+        INVENTORY.Harvest(state, plant);
+        current.RefreshVisual();
+
+        return isNew
+            ? plant.itemName + "을(를) 얻었습니다!"
+            : plant.itemName + " 수확 (이미 가진 식물이라 새로 얻는 것은 없습니다)";
     }
 
     void Refresh(string message)
@@ -67,7 +99,6 @@ public class POTPANEL : MonoBehaviour
         fertilizerToggle.interactable = !state.planted && ferts > 0;
         if (state.planted || ferts == 0) fertilizerToggle.SetIsOnWithoutNotify(false);
 
-        if (message != "") messageText.text = message;
         if (message != "") messageText.text = message;
         else if (state.planted)
         {
@@ -94,8 +125,9 @@ public class POTPANEL : MonoBehaviour
         bool useFert = fertilizerToggle.isOn && INVENTORY.Consume(fertilizerItem.itemName, 1);
 
         state.planted = true;
-        state.seedName = seedItem.itemName;               
-        state.plantedAtClear = INVENTORY.Data.clearCount;   
+        state.seedName = seedItem.itemName;
+        state.plantedAtClear = INVENTORY.Data.clearCount;
+        state.fertilized = useFert;
         INVENTORY.Save();
 
         current.RefreshVisual();

@@ -94,7 +94,7 @@ public static class INVENTORY
 
         if (db != null)
         {
-            // 1) 클리어 횟수만으로 해금되는 아이템 (Unlock After Clears)
+            // 클리어 횟수만으로 해금되는 아이템 (Unlock After Clears)
             foreach (ITEMDATA it in db.items)
             {
                 if (it == null || it.startUnlocked) continue;
@@ -104,27 +104,6 @@ public static class INVENTORY
 
                 Data.unlockedNames.Add(it.itemName);
                 newlyUnlocked.Add(it);
-            }
-
-            // 2) 화분 수확: 충분히 자랐으면 식물을 얻고 화분을 비움
-            foreach (POTSTATE pot in Data.pots)
-            {
-                if (!pot.planted) continue;
-
-                ITEMDATA seed = db.items.Find(i => i != null && i.itemName == pot.seedName);
-                if (seed == null || seed.growsInto == null) continue;
-                if (Data.clearCount - pot.plantedAtClear < seed.growAfterClears) continue;
-
-                ITEMDATA plant = seed.growsInto;
-                if (!IsOwned(plant))
-                {
-                    Data.unlockedNames.Add(plant.itemName);
-                    newlyUnlocked.Add(plant);
-                }
-
-                pot.planted = false;
-                pot.fertilized = false;
-                pot.seedName = "";
             }
         }
 
@@ -139,7 +118,16 @@ public static class INVENTORY
         Data.pots.Add(created);
         return created;
     }
+    // 수확: 식물을 해금하고 화분을 비움
+    public static void Harvest(POTSTATE pot, ITEMDATA plant)
+    {
+        if (plant != null && !IsOwned(plant)) Data.unlockedNames.Add(plant.itemName);
 
+        pot.planted = false;
+        pot.fertilized = false;
+        pot.seedName = "";
+        Save();
+    }
     // 새 게임 등에서 전체 초기화할 때
     public static void ResetAll()
     {
