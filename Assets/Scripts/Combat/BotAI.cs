@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 /// <summary>
 /// 6종의 적 봇 AI 통합 컨트롤러.
@@ -56,13 +56,12 @@ public class BotAI : MonoBehaviour
     [SerializeField] private Vector2 meleeKnockback = new Vector2(3f, 1.5f);
 
     [Header("Sniper (Laser)")]
-    [SerializeField, Min(0.1f)] private float rangedPreferredDistance = 5.5f;
-    [SerializeField, Min(0f)] private float rangedDistanceTolerance = 0.75f;
-    [SerializeField, Min(0f)] private float rangedRepositionSpeedMultiplier = 1f;
     [SerializeField, Min(1)] private int sniperDamage = 1;
     [SerializeField, Min(1f)] private float sniperLaserLength = 12f;
     [SerializeField, Min(0.1f)] private float laserCooldown = 1.8f;
     [SerializeField, Min(0.05f)] private float laserTelegraphTime = 0.55f;
+    [SerializeField, Min(0.05f)] private float sniperAttackAnimationDuration = 0.25f;
+    [SerializeField, Min(0.05f)] private float sniperStandDuration = 0.35f;
     [SerializeField, Min(0.05f)] private float laserVerticalTolerance = 0.65f;
     [SerializeField, Min(0.005f)] private float laserWidth = 0.055f;
     [SerializeField] private Vector2 sniperKnockback = new Vector2(3f, 1f);
@@ -98,6 +97,8 @@ public class BotAI : MonoBehaviour
 
     [Header("Visual")]
     [SerializeField] private Color alertColor = Color.yellow;
+    [Tooltip("스나이퍼 스프라이트 원본이 왼쪽을 보고 있으면 체크 (현재 에셋은 왼쪽을 봄). 방향이 반대로 보이면 이 값을 토글하세요.")]
+    [SerializeField] private bool sniperSpriteFacesLeft = true;
 
     private SpriteRenderer spriteRenderer;
     private DroneBotAnimation droneAnimation;
@@ -119,6 +120,9 @@ public class BotAI : MonoBehaviour
     private float stateTimer;
     private float attackTimer;
     private float laserTelegraphTimer;
+    private float sniperStandTimer;
+    private float sniperAttackTimer;
+    private bool sniperStandAfterShot;
     private float droneHitStunTimer;
     private float droneContactTimer;
     private float spinHitTimer;
@@ -144,6 +148,7 @@ public class BotAI : MonoBehaviour
         body.constraints = RigidbodyConstraints2D.FreezeRotation;
         body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         body.interpolation = RigidbodyInterpolation2D.Interpolate;
+        if (hitReaction == null) hitReaction = gameObject.AddComponent<HitReaction>();
 
         spawnPosition = transform.position;
 
@@ -157,6 +162,12 @@ public class BotAI : MonoBehaviour
         if (type == BotType.Drone)
             ApplyDroneFlip();
 
+        if (type == BotType.Sniper)
+        {
+            if (droneAnimation == null) droneAnimation = gameObject.AddComponent<DroneBotAnimation>();
+            droneAnimation.SetSniperMode();
+        }
+
         if (GetComponent<EnemyHealthBar>() == null)
             gameObject.AddComponent<EnemyHealthBar>();
 
@@ -167,11 +178,25 @@ public class BotAI : MonoBehaviour
 
     private void Start()
     {
+        if (body != null) body.gravityScale = type == BotType.Drone ? 0f : 3f;
+        if (type == BotType.Sniper)
+        {
+            if (droneAnimation == null) droneAnimation = gameObject.AddComponent<DroneBotAnimation>();
+            droneAnimation.SetSniperMode();
+        }
         int resolvedMaxHp = health != null && health.Max > 0 ? health.Max : Mathf.Max(1, maxHealth);
         health.Configure(Team.Enemy, resolvedMaxHp, 0f);
         health.Died += OnDied;
         health.Damaged += OnDamaged;
         GoldCounter.EnsureInstance();
+    }
+
+    /// <summary>direction(1=오른쪽, -1=왼쪽)에 맞춰 스프라이트를 뒤집는다. 스나이퍼는 원본이 왼쪽을 보므로 반대로 처리.</summary>
+    private void ApplyFacing()
+    {
+        if (spriteRenderer == null) return;
+        bool faceRight = direction >= 0;
+        spriteRenderer.flipX = (type == BotType.Sniper && sniperSpriteFacesLeft) ? faceRight : !faceRight;
     }
 
     private void ResolvePlayer()
@@ -281,9 +306,11 @@ public class BotAI : MonoBehaviour
             if (sees)
             {
                 BeginRecognition();
+                if (type == BotType.Sniper && droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Scan);
                 return;
             }
             PatrolGround();
+            if (type == BotType.Sniper && droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Walk);
             return;
         }
 
@@ -298,13 +325,17 @@ public class BotAI : MonoBehaviour
             }
             else
             {
-                if (type == BotType.Sniper) UpdateLaser(false);
+                if (type == BotType.Sniper)
+                {
+                    UpdateLaser(false);
+                    if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Scan);
+                }
                 return;
             }
         }
 
         direction = delta.x >= 0f ? 1 : -1;
-        if (spriteRenderer != null) spriteRenderer.flipX = direction < 0;
+        ApplyFacing();
 
         if (type == BotType.Scout)
             UpdateScout(delta);
@@ -329,60 +360,96 @@ public class BotAI : MonoBehaviour
     private void UpdateSniper(Vector2 delta)
     {
         float distanceX = Mathf.Abs(delta.x);
-        float preferred = Mathf.Max(0.1f, rangedPreferredDistance);
-        float tolerance = Mathf.Max(0f, rangedDistanceTolerance);
+        bool targetInRange = distanceX <= sniperRange && Mathf.Abs(delta.y) <= verticalDetectionTolerance;
 
-        float moveDir = 0f;
-        if (distanceX > preferred + tolerance) moveDir = direction;
-        else if (distanceX < preferred - tolerance) moveDir = -direction;
-
-        SetHorizontalSpeed(moveDir * patrolSpeed * rangedRepositionSpeedMultiplier);
-
-        delta = player.position - transform.position;
-        distanceX = Mathf.Abs(delta.x);
-        direction = delta.x >= 0f ? 1 : -1;
-        if (spriteRenderer != null) spriteRenderer.flipX = direction < 0;
-
-        bool inFiringPosition = distanceX <= sniperRange
-            && distanceX >= preferred - tolerance
-            && distanceX <= preferred + tolerance
-            && Mathf.Abs(delta.y) <= laserVerticalTolerance;
-
-        if (inFiringPosition && attackTimer <= 0f && laserTelegraphTimer <= 0f)
-            laserTelegraphTimer = laserTelegraphTime;
-
-        if (!inFiringPosition && laserTelegraphTimer <= 0f)
+        if (!targetInRange)
         {
+            actionState = ActionState.Patrol;
+            laserTelegraphTimer = 0f;
+            sniperStandAfterShot = false;
+            sniperStandTimer = 0f;
+            sniperAttackTimer = 0f;
+            UpdateLaser(false);
+            if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Walk);
+            PatrolGround();
+            return;
+        }
+
+        SetHorizontalSpeed(0f);
+        direction = delta.x >= 0f ? 1 : -1;
+        ApplyFacing();
+
+        // 레이저 발사 순간 공격 모션을 재생한 뒤 일어서기 모션으로 전환
+        if (sniperAttackTimer > 0f)
+        {
+            sniperAttackTimer -= Time.deltaTime;
+            if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Attack);
+            UpdateLaser(false);
+            if (sniperAttackTimer <= 0f)
+            {
+                sniperStandAfterShot = true;
+                sniperStandTimer = sniperStandDuration;
+                if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Stand);
+            }
+            return;
+        }
+
+        // 사격 직후에는 잠시 일어서는 모션을 재생한 뒤 다시 조준 상태로 복귀
+        if (sniperStandAfterShot)
+        {
+            sniperStandTimer -= Time.deltaTime;
+            if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Stand);
+            if (sniperStandTimer <= 0f)
+            {
+                sniperStandAfterShot = false;
+                if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Idle);
+            }
             UpdateLaser(false);
             return;
+        }
+
+        // 감지 범위 안에서는 후퇴하지 않고 제자리에서 조준/대기
+        if (laserTelegraphTimer <= 0f && attackTimer > 0f)
+        {
+            if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Idle);
+            UpdateLaser(false);
+            return;
+        }
+
+        if (laserTelegraphTimer <= 0f && attackTimer <= 0f)
+        {
+            laserTelegraphTimer = laserTelegraphTime;
+            if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Sit);
         }
 
         if (laserTelegraphTimer > 0f)
         {
             laserTelegraphTimer -= Time.deltaTime;
+            if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Sit);
             UpdateLaser(true);
-
             if (laserTelegraphTimer <= 0f)
             {
                 attackTimer = laserCooldown;
                 Vector2 origin = (Vector2)transform.position + Vector2.up * 0.25f;
                 RaycastHit2D[] hits = Physics2D.RaycastAll(origin, Vector2.right * direction, sniperLaserLength);
                 System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
-
                 foreach (RaycastHit2D hit in hits)
                 {
-                    if (hit.collider == null || hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform))
-                        continue;
-
+                    if (hit.collider == null || hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform)) continue;
                     Health target = hit.collider.GetComponentInParent<Health>();
                     if (target != null && target.Team == Team.Player && Mathf.Abs(origin.y - player.position.y) <= laserVerticalTolerance)
                         DamagePlayer(sniperDamage, new Vector2(direction * Mathf.Abs(sniperKnockback.x), sniperKnockback.y));
                     break;
                 }
+                sniperAttackTimer = sniperAttackAnimationDuration;
+                sniperStandAfterShot = false;
+                UpdateLaser(false);
+                if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Attack);
             }
         }
         else
         {
+            if (droneAnimation != null) droneAnimation.Play(DroneBotAnimation.State.Idle);
             UpdateLaser(false);
         }
     }
@@ -721,7 +788,7 @@ public class BotAI : MonoBehaviour
             direction *= -1;
 
         SetHorizontalSpeed(direction * patrolSpeed);
-        if (spriteRenderer != null) spriteRenderer.flipX = direction < 0;
+        ApplyFacing();
     }
 
     private void SetHorizontalSpeed(float speed)
@@ -816,18 +883,32 @@ public class BotAI : MonoBehaviour
 
     private void OnDamaged(DamageInfo info)
     {
+        if (type == BotType.Sniper)
+        {
+            actionState = ActionState.Active;
+            stateTimer = 0f;
+            attackTimer = 0f;
+            laserTelegraphTimer = laserTelegraphTime;
+            sniperAttackTimer = 0f;
+            sniperStandAfterShot = false;
+            if (droneAnimation != null)
+            {
+                droneAnimation.Play(DroneBotAnimation.State.Sit);
+                droneAnimation.PlayHit();
+            }
+        }
+
         if (type == BotType.Drone)
         {
-            if (droneState == DroneState.Free)
-                TriggerDroneRecognition();
-
-            droneHitStunTimer = Mathf.Max(0f, droneHitStunDuration);
-            droneKnockbackVelocity = info.knockback * droneHitKnockbackScale;
-            if (hitReaction == null || !hitReaction.IsStunned)
+            if (droneState == DroneState.Free) TriggerDroneRecognition();
+            if (hitReaction == null)
+            {
+                droneHitStunTimer = Mathf.Max(0f, droneHitStunDuration);
+                droneKnockbackVelocity = info.knockback * droneHitKnockbackScale;
                 SetVelocity(droneKnockbackVelocity);
-
-            if (droneAnimation != null && droneHitStunTimer > 0f)
-                droneAnimation.PlayHit(droneHitStunTimer);
+                if (droneAnimation != null && droneHitStunTimer > 0f) droneAnimation.PlayHit(droneHitStunTimer);
+            }
+            else if (droneAnimation != null) droneAnimation.PlayHit();
             return;
         }
 
@@ -861,7 +942,7 @@ public class BotAI : MonoBehaviour
                 Gizmos.color = new Color(1f, 0.2f, 0.2f, 0.8f);
                 Gizmos.DrawLine(origin + Vector3.up * 0.25f, origin + Vector3.up * 0.25f + Vector3.right * dir * sniperLaserLength);
                 Gizmos.color = Color.yellow;
-                Gizmos.DrawWireSphere(origin, rangedPreferredDistance);
+                Gizmos.DrawWireSphere(origin, sniperRange);
                 break;
 
             case BotType.Drone:

@@ -7,7 +7,6 @@ using UnityEngine;
 public class HitStop : MonoBehaviour
 {
     private static HitStop instance;
-    private static bool isQuitting;
 
     [Header("히트스톱 설정")]
     [SerializeField, Range(0.01f, 0.5f)] private float frozenTimeScale = 0.05f;
@@ -16,20 +15,11 @@ public class HitStop : MonoBehaviour
     private Coroutine routine;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetStatics()
-    {
-        instance = null;
-        isQuitting = false;
-    }
-
-    private void OnApplicationQuit()
-    {
-        isQuitting = true;
-    }
+    private static void ResetStatics() { instance = null; }
 
     public static void Do(float seconds)
     {
-        if (seconds <= 0f || isQuitting) return;
+        if (seconds <= 0f) return;
 
         if (instance == null)
         {
@@ -52,7 +42,7 @@ public class HitStop : MonoBehaviour
 
     private void Begin(float seconds)
     {
-        if (UIManager.HasInstance && UIManager.Instance.IsPaused) return;
+        if (UIManager.Instance != null && UIManager.Instance.IsPaused) return;
         if (routine != null) StopCoroutine(routine);
         routine = StartCoroutine(Run(seconds));
     }
@@ -62,7 +52,7 @@ public class HitStop : MonoBehaviour
         Time.timeScale = frozenTimeScale;
         yield return new WaitForSecondsRealtime(seconds);
 
-        if (!UIManager.HasInstance || !UIManager.Instance.IsPaused)
+        if (UIManager.Instance == null || !UIManager.Instance.IsPaused)
             Time.timeScale = 1f;
 
         routine = null;
@@ -73,7 +63,7 @@ public class HitStop : MonoBehaviour
         if (instance == this)
         {
             instance = null;
-            if (!isQuitting && (!UIManager.HasInstance || !UIManager.Instance.IsPaused))
+            if (UIManager.Instance == null || !UIManager.Instance.IsPaused)
                 Time.timeScale = 1f;
         }
     }

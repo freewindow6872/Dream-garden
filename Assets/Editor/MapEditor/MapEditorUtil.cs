@@ -225,6 +225,30 @@ namespace GardenerEditor
             return go;
         }
 
+        /// <summary>밑변 1, 높이 1인 직각 이등변 삼각형 타일(왼쪽 아래 직각)을 생성한다.</summary>
+        public static GameObject CreateTrianglePlatform(GameObject stage, Rect cell)
+        {
+            Transform parent = GetGroup(stage, MapNames.Platforms, true);
+            GameObject go = new GameObject("TrianglePlatform");
+            Undo.RegisterCreatedObjectUndo(go, "Create Triangle Platform");
+            go.transform.SetParent(parent, false);
+            go.layer = GameLayers.Ground;
+            go.transform.position = new Vector3(cell.center.x, cell.center.y, 0f);
+            go.transform.localScale = Vector3.one;
+
+            SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Art/MapEditor/triangle_tile.png");
+            sr.color = Color.white;
+            sr.sortingOrder = -10;
+
+            PolygonCollider2D polygon = go.AddComponent<PolygonCollider2D>();
+            polygon.points = new Vector2[] { new Vector2(-0.5f, -0.5f), new Vector2(0.5f, -0.5f), new Vector2(-0.5f, 0.5f) };
+
+            GameObjectUtility.EnsureUniqueNameForSibling(go);
+            EditorSceneManager.MarkSceneDirty(go.scene);
+            return go;
+        }
+
         public static bool EraseAt(GameObject stage, Vector2 p)
         {
             Transform t = FindPlatformAt(stage, p);

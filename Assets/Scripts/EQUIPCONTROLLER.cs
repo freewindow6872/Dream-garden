@@ -4,23 +4,25 @@ using UnityEngine.SceneManagement;
 
 public class EQUIPCONTROLLER : MonoBehaviour
 {
-    [Header("∆–≥Œ")]
+    [Header("Ìå®ÎÑê")]
     public GameObject equipPanel;
     public GameObject listPopup;
 
-    [Header("ΩΩ∑‘")]
+    [Header("Ïä¨Î°Ø")]
     public ITEMSLOT[] plantSlots;
     public ITEMSLOT animalSlot;
 
-    [Header("∏Ò∑œ")]
+    [Header("Î™©Î°ù")]
     public ITEMDATABASE database;
     public Transform listContainer;
     public Button listItemPrefab;
 
-    [Header("¿Ãµø«“ æ¿")]
+    [Header("Ïù¥ÎèôÌï† Ïî¨")]
     public string nextSceneName = "SampleScene";
 
     ITEMSLOT currentSlot;
+
+    public bool IsOpen { get { return equipPanel != null && equipPanel.activeSelf; } }
 
     void Start()
     {
@@ -63,7 +65,7 @@ public class EQUIPCONTROLLER : MonoBehaviour
             if (currentSlot.type == ITEMTYPE.Plant)
             {
                 foreach (var p in GAMEDATA.Plants)
-                    if (p == item) return;   // ∞∞¿∫ Ωƒπ∞ ¡ﬂ∫π πÊ¡ˆ
+                    if (p == item) return;   // Í∞ôÏùÄ ÏãùÎ¨º Ï§ëÎ≥µ Î∞©ÏßÄ
                 GAMEDATA.Plants[currentSlot.index] = item;
             }
             else
@@ -73,21 +75,6 @@ public class EQUIPCONTROLLER : MonoBehaviour
             currentSlot.SetItem(item);
             listPopup.SetActive(false);
         }
-    }
-    public bool IsOpen
-    {
-        get
-        {
-            return (equipPanel != null && equipPanel.activeSelf)
-                || (listPopup != null && listPopup.activeSelf);
-        }
-    }
-
-    void Update()
-    {
-        if (!GARDENINPUT.CancelPressed) return;
-        if (listPopup.activeSelf) CloseList();
-        else if (equipPanel.activeSelf) BackToSubStage();
     }
 
     public void CloseList() { listPopup.SetActive(false); }

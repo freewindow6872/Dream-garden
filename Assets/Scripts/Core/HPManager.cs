@@ -1,41 +1,31 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 
 /// <summary>
 /// 플레이어 체력(HP) 전역 관리자.
 /// - Health(플레이어 본체 컴포넌트)와 HealthUI 사이를 일관되게 연결한다.
 /// - 씬 전환/리로드 시 플레이어 Health를 자동으로 재탐색하고 기본 최대 체력(5칸)을 보장한다.
-/// - 낙사 판정(ApplyFallHazard) 및 피격/회복/사망 이벤트를 통합 중계한다.
+/// - 피격/회복/사망 이벤트를 중계하여 다른 시스템이 플레이어 오브젝트를 직접 찾지 않아도 구독할 수 있게 한다.
 /// </summary>
 public class HPManager : MonoBehaviour
 {
     private static HPManager instance;
-    private static bool isQuitting;
 
     [Header("플레이어 체력 기본 설정")]
     [SerializeField, Min(1)] private int defaultPlayerMaxHp = 5;
-    [SerializeField, Min(0f)] private float defaultHitInvulnerableTime = 0.8f;
     [SerializeField] private bool fullHealOnSceneLoad = true;
 
-    [Header("낙사(Fall Hazard) 설정")]
-    [SerializeField, Min(1)] private int fallHazardDamage = 1;
-
     private Health playerHealth;
-    private float rebindTimer;
 
     public static HPManager Instance
     {
         get
         {
-            if (instance == null && !isQuitting)
+            if (instance == null)
             {
-                instance = FindObjectOfType<HPManager>(true);
-                if (instance == null)
-                {
-                    GameObject go = new GameObject("HPManager");
-                    DontDestroyOnLoad(go);
-                    instance = go.AddComponent<HPManager>();
-                }
+                GameObject go = new GameObject("HPManager");
+                DontDestroyOnLoad(go);
+                instance = go.AddComponent<HPManager>();
             }
             return instance;
         }
@@ -51,9 +41,9 @@ public class HPManager : MonoBehaviour
         }
     }
 
-    public int CurrentHp => PlayerHealth != null ? PlayerHealth.Current : defaultPlayerMaxHp;
-    public int MaxHp => PlayerHealth != null ? PlayerHealth.Max : defaultPlayerMaxHp;
-    public bool IsPlayerDead => PlayerHealth != null && PlayerHealth.IsDead;
+    public int CurrentHp { get { return PlayerHealth != null ? PlayerHealth.Current : defaultPlayerMaxHp; } }
+    public int MaxHp { get { return PlayerHealth != null ? PlayerHealth.Max : defaultPlayerMaxHp; } }
+    public bool IsPlayerDead { get { return PlayerHealth != null && PlayerHealth.IsDead; } }
 
     public event System.Action<Health> PlayerBound;
     public event System.Action<int, int> PlayerHpChanged;
@@ -64,7 +54,6 @@ public class HPManager : MonoBehaviour
     private static void ResetStatics()
     {
         instance = null;
-        isQuitting = false;
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -86,11 +75,6 @@ public class HPManager : MonoBehaviour
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
-    private void OnApplicationQuit()
-    {
-        isQuitting = true;
-    }
-
     private void OnDestroy()
     {
         if (instance == this)
@@ -106,22 +90,8 @@ public class HPManager : MonoBehaviour
         RefreshPlayerBinding();
     }
 
-    private void Update()
-    {
-        if (playerHealth == null)
-        {
-            rebindTimer -= Time.unscaledDeltaTime;
-            if (rebindTimer <= 0f)
-            {
-                rebindTimer = 0.25f;
-                RefreshPlayerBinding();
-            }
-        }
-    }
-
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        rebindTimer = 0f;
         RefreshPlayerBinding();
     }
 
@@ -131,7 +101,6 @@ public class HPManager : MonoBehaviour
         BindPlayerHealth(FindPlayerHealth());
     }
 
-    /// <summary>현재 씬에서 플레이어 오브젝트의 Health 컴포넌트를 탐색한다.</summary>
     public Health FindPlayerHealth()
     {
         PlayerCombat combat = FindObjectOfType<PlayerCombat>();
@@ -161,19 +130,21 @@ public class HPManager : MonoBehaviour
 
         if (playerHealth.Team != Team.Player || playerHealth.Max != defaultPlayerMaxHp)
         {
-            playerHealth.Configure(Team.Player, defaultPlayerMaxHp, defaultHitInvulnerableTime);
+            playerHealth.Configure(Team.Player, defaultPlayerMaxHp, 0.8f);
         }
         else if (fullHealOnSceneLoad)
         {
             playerHealth.ResetToMax();
         }
 
+        if (PlayerBound != null) PlayerBound(playerHealth);
+
         playerHealth.Damaged += OnPlayerDamaged;
         playerHealth.Changed += OnPlayerChanged;
         playerHealth.Died += OnPlayerDied;
 
-        PlayerBound?.Invoke(playerHealth);
-        PlayerHpChanged?.Invoke(playerHealth.Current, playerHealth.Max);
+        if (PlayerHpChanged != null)
+            PlayerHpChanged(playerHealth.Current, playerHealth.Max);
     }
 
     private void UnbindPlayerHealth()
@@ -188,17 +159,17 @@ public class HPManager : MonoBehaviour
 
     private void OnPlayerDamaged(DamageInfo info)
     {
-        PlayerDamaged?.Invoke(info);
+        if (PlayerDamaged != null) PlayerDamaged(info);
     }
 
     private void OnPlayerChanged(int current, int max)
     {
-        PlayerHpChanged?.Invoke(current, max);
+        if (PlayerHpChanged != null) PlayerHpChanged(current, max);
     }
 
     private void OnPlayerDied(Health h)
     {
-        PlayerDied?.Invoke(h);
+        if (PlayerDied != null) PlayerDied(h);
     }
 
     // ---------------------------------------------------------------- public API
@@ -230,21 +201,19 @@ public class HPManager : MonoBehaviour
         return PlayerHealth.TakeDamage(info);
     }
 
-    /// <summary>낙사(deathY 이하 추락) 시 데미지를 적용하고 생존 시 리스폰 위치로 복귀시킨다.</summary>
+
+    /// <summary>낙하 위험 구역 처리: 플레이어에게 피해를 주고 지정된 리스폰 위치로 이동시킨다.</summary>
     public void ApplyFallHazard(PlayerRespawn respawn)
     {
-        if (respawn == null) return;
-
-        DamagePlayer(fallHazardDamage, Vector2.zero, respawn.gameObject);
-
-        if (!IsPlayerDead)
-            respawn.Respawn();
+        if (respawn == null || PlayerHealth == null || PlayerHealth.IsDead) return;
+        DamagePlayer(1, Vector2.zero, respawn.gameObject);
+        if (!PlayerHealth.IsDead) respawn.Respawn();
     }
 
-    public void SetPlayerMaxHealth(int newMax, bool refill = true)
+    public void SetPlayerMaxHealth(int newMax)
     {
         defaultPlayerMaxHp = Mathf.Max(1, newMax);
         if (PlayerHealth != null)
-            PlayerHealth.SetMax(defaultPlayerMaxHp, refill);
+            PlayerHealth.Configure(Team.Player, defaultPlayerMaxHp, 0.8f);
     }
 }

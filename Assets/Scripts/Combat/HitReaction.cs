@@ -22,6 +22,9 @@ public class HitReaction : MonoBehaviour
     [Header("넉백")]
     [SerializeField] private bool applyKnockback = true;
     [SerializeField, Range(0f, 2f)] private float knockbackScale = 1f;
+    [Tooltip("공격 데이터에 넉백이 없을 때 적용하는 기본 수평 넉백")]
+    [SerializeField, Min(0f)] private float fallbackKnockback = 1.35f;
+    [SerializeField, Min(0f)] private float fallbackUpward = 0.25f;
 
     [Header("색상 변화")]
     [SerializeField] private Color flashColor = new Color(1f, 0.35f, 0.35f, 1f);
@@ -88,7 +91,17 @@ public class HitReaction : MonoBehaviour
         // 2) 약한 넉백
         RestoreGravity();
         if (rb != null && applyKnockback)
-            rb.velocity = info.knockback * knockbackScale;
+        {
+            Vector2 impulse = info.knockback;
+            if (impulse.sqrMagnitude < 0.0001f && fallbackKnockback > 0f)
+            {
+                float direction = 1f;
+                if (info.source != null)
+                    direction = transform.position.x >= info.source.transform.position.x ? 1f : -1f;
+                impulse = new Vector2(direction * fallbackKnockback, fallbackUpward);
+            }
+            rb.velocity = impulse * knockbackScale;
+        }
 
         // 3) 경직 유지
         if (staggerTime > 0f) yield return new WaitForSecondsRealtime(staggerTime);

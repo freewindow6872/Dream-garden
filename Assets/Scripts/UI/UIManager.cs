@@ -8,15 +8,11 @@ using UnityEngine.SceneManagement;
 public class UIManager : MonoBehaviour
 {
     private static UIManager instance;
-    private static bool isQuitting;
-
-    public static bool HasInstance => instance != null;
-
     public static UIManager Instance
     {
         get
         {
-            if (instance == null && !isQuitting)
+            if (instance == null)
             {
                 instance = FindObjectOfType<UIManager>(true);
                 if (instance == null)
@@ -51,7 +47,6 @@ public class UIManager : MonoBehaviour
     private static void ResetStatics()
     {
         instance = null;
-        isQuitting = false;
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -69,17 +64,6 @@ public class UIManager : MonoBehaviour
         }
         instance = this;
         DontDestroyOnLoad(gameObject);
-    }
-
-    private void OnApplicationQuit()
-    {
-        isQuitting = true;
-    }
-
-    private void OnDestroy()
-    {
-        if (instance == this)
-            instance = null;
     }
 
     private void OnEnable()
@@ -135,7 +119,7 @@ public class UIManager : MonoBehaviour
         if (lockPlayerInputWhenPopupOpen)
         {
             PlayerController2D player = FindObjectOfType<PlayerController2D>();
-            if (player != null && HPManager.Instance != null && !HPManager.Instance.IsPlayerDead)
+            if (player != null && !HPManager.Instance.IsPlayerDead)
                 player.SetInputLocked(IsAnyPopupOpen);
         }
     }

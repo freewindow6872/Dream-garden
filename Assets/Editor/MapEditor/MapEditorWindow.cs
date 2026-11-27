@@ -11,9 +11,9 @@ namespace GardenerEditor
     /// </summary>
     public class MapEditorWindow : EditorWindow
     {
-        private enum MapTool { Select, Platform, OneWay, Erase, Start, Goal }
+        private enum MapTool { Select, Platform, OneWay, Triangle, Erase, Start, Goal }
 
-        private static readonly string[] ToolLabels = { "선택", "발판", "통과 발판", "지우개", "시작점", "골" };
+        private static readonly string[] ToolLabels = { "선택", "발판", "통과 발판", "직각 삼각형", "지우개", "시작점", "골" };
         private static readonly float[] GridSizes = { 0.25f, 0.5f, 1f, 2f };
         private static readonly string[] GridLabels = { "0.25", "0.5", "1 (플레이어 크기)", "2" };
 
@@ -211,6 +211,8 @@ namespace GardenerEditor
                     return "Scene 뷰에서 드래그하면 사각형 발판이 만들어집니다. 클릭 한 번 = 1칸.\nEsc = 취소 / Alt+드래그 = 화면 이동";
                 case MapTool.OneWay:
                     return "아래에서 위로 뚫고 올라갈 수 있는 발판. 사용법은 발판과 같습니다.";
+                case MapTool.Triangle:
+                    return "밑변 1, 높이 1인 직각 이등변 삼각형 타일을 한 칸에 배치합니다. 기본 방향은 왼쪽 아래가 직각입니다.";
                 case MapTool.Erase:
                     return "발판을 클릭(또는 드래그)해서 삭제합니다. Ctrl+Z로 되돌릴 수 있습니다.";
                 case MapTool.Start:
@@ -467,6 +469,13 @@ namespace GardenerEditor
                     break;
                 }
 
+                case MapTool.Triangle:
+                {
+                    Rect cell = MapEditorUtil.CellAt(dragCurrent, 1f);
+                    MapEditorUtil.CreateTrianglePlatform(stage, cell);
+                    break;
+                }
+
                 case MapTool.Erase:
                 {
                     Undo.SetCurrentGroupName("Erase Platforms");
@@ -619,6 +628,19 @@ namespace GardenerEditor
                         Handles.Label(new Vector3(r.xMin, r.yMax + 0.3f, 0f),
                             string.Format("{0:0.##} x {1:0.##}", r.width, r.height), EditorStyles.whiteBoldLabel);
                     }
+                    break;
+                }
+
+                case MapTool.Triangle:
+                {
+                    Rect r = MapEditorUtil.CellAt(mouseWorld, 1f);
+                    Vector3 a = new Vector3(r.xMin, r.yMin, 0f);
+                    Vector3 b = new Vector3(r.xMax, r.yMin, 0f);
+                    Vector3 c = new Vector3(r.xMin, r.yMax, 0f);
+                    Handles.color = new Color(0.35f, 0.75f, 0.95f, 0.35f);
+                    Handles.DrawAAConvexPolygon(a, b, c);
+                    Handles.color = Color.white;
+                    Handles.DrawAAPolyLine(2f, a, b, c, a);
                     break;
                 }
 

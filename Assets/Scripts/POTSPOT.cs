@@ -1,24 +1,24 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 
-public class POTSPOT : INTERACTABLE
+public class POTSPOT : MonoBehaviour
 {
     [Tooltip("화분마다 서로 다르게 (POT1, POT2 ...)")]
     public string potId = "POT1";
 
-    [Header("모습 (선택)")]
-    public Sprite plantedSprite;                       // 심은 뒤 그림. 비우면 색만 변경
+    [Header("심은 뒤 모습 (선택)")]
+    public Sprite plantedSprite;                       // 비우면 색만 변경
     public Color emptyColor = Color.white;
-    public Color plantedColor = new Color(0.65f, 1f, 0.65f);   // 성장 중
-    public Color readyColor = new Color(1f, 0.9f, 0.4f);       // 수확 가능
+    public Color plantedColor = new Color(0.65f, 1f, 0.65f);
 
     SpriteRenderer sr;
     Sprite emptySprite;
-
-    void Reset() { promptName = "화분"; }
+    Collider2D col;
 
     void Awake()
     {
         sr = GetComponent<SpriteRenderer>();
+        col = GetComponent<Collider2D>();
         if (sr != null) emptySprite = sr.sprite;
     }
 
@@ -27,27 +27,44 @@ public class POTSPOT : INTERACTABLE
         RefreshVisual();
     }
 
-    public override string GetPrompt()
+    void Update()
     {
-        POTSTATE s = INVENTORY.GetPot(potId);
-        if (!s.planted) return promptName + " (씨앗 심기)";
-        bool ready = POTPANEL.Instance != null && POTPANEL.Instance.IsReady(s);
-        return promptName + (ready ? " (수확하기)" : " (성장 중)");
+        if (col == null || POTPANEL.Instance == null) return;
+        if (POTPANEL.Instance.IsOpen) return;
+        if (!Clicked(out Vector2 screenPos)) return;
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+
+        Camera cam = Camera.main;
+        if (cam == null) return;
+
+        Vector3 sp = new Vector3(screenPos.x, screenPos.y, Mathf.Abs(cam.transform.position.z));
+        Vector2 world = cam.ScreenToWorldPoint(sp);
+
+        if (col.OverlapPoint(world)) POTPANEL.Instance.Open(this);
     }
 
-    public override void Interact()
+    bool Clicked(out Vector2 pos)
     {
-        if (POTPANEL.Instance != null) POTPANEL.Instance.Open(this);
+#if ENABLE_INPUT_SYSTEM
+        var m = UnityEngine.InputSystem.Mouse.current;
+        if (m != null && m.leftButton.wasPressedThisFrame)
+        {
+            pos = m.position.ReadValue();
+            return true;
+        }
+        pos = Vector2.zero;
+        return false;
+#else
+        pos = Input.mousePosition;
+        return Input.GetMouseButtonDown(0);
+#endif
     }
 
     public void RefreshVisual()
     {
         if (sr == null) return;
-
         POTSTATE s = INVENTORY.GetPot(potId);
-        bool ready = POTPANEL.Instance != null && POTPANEL.Instance.IsReady(s);
-
-        sr.color = !s.planted ? emptyColor : (ready ? readyColor : plantedColor);
+        sr.color = s.planted ? plantedColor : emptyColor;
         if (plantedSprite != null) sr.sprite = s.planted ? plantedSprite : emptySprite;
     }
 
@@ -57,7 +74,6 @@ public class POTSPOT : INTERACTABLE
         POTSTATE s = INVENTORY.GetPot(potId);
         s.planted = false;
         s.fertilized = false;
-        s.seedName = "";
         INVENTORY.Save();
         RefreshVisual();
     }
