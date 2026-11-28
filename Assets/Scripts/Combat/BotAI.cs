@@ -66,6 +66,9 @@ public class BotAI : MonoBehaviour
     [SerializeField, Min(0.005f)] private float laserWidth = 0.055f;
     [SerializeField] private Vector2 sniperKnockback = new Vector2(3f, 1f);
 
+    [Header("Body Contact Damage (All Bots)\n")]
+    [SerializeField, Min(1)] private int bodyContactDamage = 1;
+
     [Header("Drone (Aerial)")]
     [SerializeField] private DroneState droneState = DroneState.Free;
     [SerializeField] private bool droneSpriteFacesLeft = true;
@@ -76,8 +79,6 @@ public class BotAI : MonoBehaviour
     [SerializeField, Min(0f)] private float droneAggroSpeedMultiplier = 1.7f;
     [SerializeField] private float droneTargetOffsetY = 0f;
     [SerializeField, Min(1)] private int droneContactDamage = 1;
-    [SerializeField] private Vector2 droneContactKnockback = new Vector2(4.5f, 2.5f);
-    [SerializeField, Min(0.05f)] private float droneContactCooldown = 0.4f;
     [SerializeField] private bool droneContactOnlyInAggro = true;
     [SerializeField, Min(0f)] private float droneHitStunDuration = 0.35f;
     [SerializeField, Min(0f)] private float droneHitKnockbackScale = 0f;
@@ -105,8 +106,6 @@ public class BotAI : MonoBehaviour
     [SerializeField, Min(1)] private int sprintContactDamage = 1;
     [SerializeField, Min(0.1f)] private float sprintContactRange = 0.9f;
     [SerializeField, Min(0.1f)] private float sprintContactVerticalRange = 1.2f;
-    [SerializeField, Min(0.05f)] private float sprintContactCooldown = 0.6f;
-    [SerializeField] private Vector2 sprintKnockback = new Vector2(5f, 2f);
     [Tooltip("스프린트 봇 스프라이트 원본이 왼쪽을 보고 있으면 체크 (현재 에셋은 왼쪽을 봄)")]
     [SerializeField] private bool sprintSpriteFacesLeft = true;
 
@@ -141,7 +140,6 @@ public class BotAI : MonoBehaviour
     private float sniperAttackTimer;
     private bool sniperStandAfterShot;
     private float droneHitStunTimer;
-    private float droneContactTimer;
     private float spinHitTimer;
     private int spinHitsLeft;
 
@@ -568,10 +566,9 @@ public class BotAI : MonoBehaviour
         if (sprintAnimation != null) sprintAnimation.Play(SprintBotAnimation.State.Run);
 
         // 달리는 도중 닿으면 피해
-        if (attackTimer <= 0f && Mathf.Abs(delta.x) <= sprintContactRange && Mathf.Abs(delta.y) <= sprintContactVerticalRange)
+        if (Mathf.Abs(delta.x) <= sprintContactRange && Mathf.Abs(delta.y) <= sprintContactVerticalRange)
         {
-            attackTimer = sprintContactCooldown;
-            DamagePlayer(sprintContactDamage, new Vector2(runDirection * Mathf.Abs(sprintKnockback.x), sprintKnockback.y));
+            DamagePlayer(sprintContactDamage, Vector2.zero);
         }
 
         Vector2 pos = body != null ? body.position : (Vector2)transform.position;
@@ -755,9 +752,6 @@ public class BotAI : MonoBehaviour
 
     private void UpdateDrone()
     {
-        if (droneContactTimer > 0f)
-            droneContactTimer -= Time.deltaTime;
-
         if (droneHitStunTimer > 0f)
         {
             droneHitStunTimer -= Time.deltaTime;
@@ -971,6 +965,30 @@ public class BotAI : MonoBehaviour
         ph.TakeDamage(info);
     }
 
+    // Reliable body-contact check independent of Collision/Trigger callbacks.
+    // Health.TakeDamage already enforces the player's existing invulnerability window.
+    private void FixedUpdate()
+    {
+        if (dead || player == null || selfCollider == null) return;
+
+        Health target = player.GetComponentInParent<Health>();
+        if (target == null || target.Team != Team.Player || target.IsDead) return;
+
+        Collider2D[] playerColliders = player.GetComponentsInChildren<Collider2D>();
+        for (int i = 0; i < playerColliders.Length; i++)
+        {
+            Collider2D playerCollider = playerColliders[i];
+            if (playerCollider == null || !playerCollider.enabled || !playerCollider.gameObject.activeInHierarchy) continue;
+
+            ColliderDistance2D contact = selfCollider.Distance(playerCollider);
+            if (contact.isValid && contact.distance <= 0f)
+            {
+                ApplyBodyContactDamage(target, contact.pointA);
+                return;
+            }
+        }
+    }
+
     private void OnCollisionEnter2D(Collision2D collision)
     {
         if (!dead && actionState == ActionState.Active && collision.collider.gameObject.layer == GameLayers.Ground)
@@ -986,48 +1004,56 @@ public class BotAI : MonoBehaviour
             }
             else if (type == BotType.MixerChargeBot && attackTimer <= 0f) BeginSpin();
         }
-        TryDroneContactAttack(collision.collider);
+        TryBodyContactAttack(collision.otherCollider);
     }
 
     private void OnCollisionStay2D(Collision2D collision)
     {
-        TryDroneContactAttack(collision.collider);
+        TryBodyContactAttack(collision.otherCollider);
     }
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        TryDroneContactAttack(other);
+        TryBodyContactAttack(other);
     }
 
     private void OnTriggerStay2D(Collider2D other)
     {
-        TryDroneContactAttack(other);
+        TryBodyContactAttack(other);
     }
 
-    private void TryDroneContactAttack(Collider2D other)
+    private void TryBodyContactAttack(Collider2D other)
     {
-        if (dead || type != BotType.Drone || other == null) return;
-        if (IsDroneStunned) return;
-        if (droneContactOnlyInAggro && droneState != DroneState.Aggro) return;
-        if (droneContactTimer > 0f) return;
+        if (dead || other == null) return;
 
         Health target = other.GetComponentInParent<Health>();
         if (target == null || target.Team != Team.Player || target.IsDead) return;
 
-        float pushDir = target.transform.position.x >= transform.position.x ? 1f : -1f;
-        Vector2 knockback = new Vector2(pushDir * Mathf.Abs(droneContactKnockback.x), droneContactKnockback.y);
+        // Drone contact keeps its original aggro/stun restrictions.
+        if (type == BotType.Drone)
+        {
+            if (IsDroneStunned) return;
+            if (droneContactOnlyInAggro && droneState != DroneState.Aggro) return;
+        }
 
+        ApplyBodyContactDamage(target, other.ClosestPoint(transform.position));
+    }
+
+    private void ApplyBodyContactDamage(Health target, Vector2 hitPoint)
+    {
+        if (target == null || target.Team != Team.Player || target.IsDead) return;
+
+        // Existing Health invulnerability handles repeat contact; no extra cooldown or knockback.
+        int sourceDamage = type == BotType.Drone ? droneContactDamage : bodyContactDamage;
         DamageInfo info = new DamageInfo
         {
-            amount = Mathf.Max(1, droneContactDamage),
-            knockback = knockback,
+            amount = Mathf.Max(1, sourceDamage),
+            knockback = Vector2.zero,
             sourceTeam = Team.Enemy,
             source = gameObject,
-            hitPoint = other.ClosestPoint(transform.position)
+            hitPoint = hitPoint
         };
-
-        if (target.TakeDamage(info))
-            droneContactTimer = droneContactCooldown;
+        target.TakeDamage(info);
     }
 
     private void OnDamaged(DamageInfo info)
