@@ -420,8 +420,8 @@ Transform:
   m_GameObject: {fileID: 9100000}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -7.79, y: -0.56, z: 0}
-  m_LocalScale: {x: 1.4, y: 1.4, z: 1}
+  m_LocalPosition: {x: -4.84, y: -0.91, z: 0}
+  m_LocalScale: {x: 1.2, y: 1.2, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -468,7 +468,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 2
   m_Sprite: {fileID: 21300000, guid: b0c98fc63338539cab0cf3e5dc77ca52, type: 3}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.95, g: 0.25, b: 0.2, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -958,8 +958,9 @@ GameObject:
   - component: {fileID: 9300005}
   - component: {fileID: 9300006}
   - component: {fileID: 9300007}
+  - component: {fileID: 9300008}
   m_Layer: 7
-  m_Name: ChargeBot
+  m_Name: SprintBot
   m_TagString: Enemy
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -974,8 +975,8 @@ Transform:
   m_GameObject: {fileID: 9300000}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -22.94, y: 3.05, z: 0}
-  m_LocalScale: {x: 0.8, y: 0.8, z: 1}
+  m_LocalPosition: {x: -22.94, y: 3.5, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -1021,8 +1022,8 @@ SpriteRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 2
-  m_Sprite: {fileID: 2747690628134850419, guid: 83c9fb90fa1d5a2438a23ab67e7cbeb8, type: 3}
-  m_Color: {r: 0.2, g: 0.8, b: 0.3, a: 1}
+  m_Sprite: {fileID: 21300000, guid: e330ccb17b3f6f8b137ddda52a76d045, type: 3}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -1075,7 +1076,7 @@ BoxCollider2D:
     adaptiveTiling: 0
   m_AutoTiling: 0
   serializedVersion: 2
-  m_Size: {x: 1, y: 1}
+  m_Size: {x: 0.8, y: 1.8}
   m_EdgeRadius: 0
 --- !u!50 &9300004
 Rigidbody2D:
@@ -1210,6 +1211,28 @@ MonoBehaviour:
   showMixerAttackVisual: 1
   alertColor: {r: 1, g: 0.92, b: 0.016, a: 1}
   sniperSpriteFacesLeft: 1
+--- !u!114 &9300008
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9300000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5c1d9e4a7b2f4c63a8e0d3f1b6a92e47, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  resourcesFolder: SprintSprites
+  walkFrameCount: 8
+  scanFrameCount: 4
+  runFrameCount: 6
+  stopFrameCount: 6
+  walkFps: 10
+  scanFps: 12
+  runFps: 14
+  stopFps: 12
+  hitDuration: 0.22
 --- !u!1 &9300100
 GameObject:
   m_ObjectHideFlags: 0

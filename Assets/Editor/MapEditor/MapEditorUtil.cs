@@ -225,8 +225,8 @@ namespace GardenerEditor
             return go;
         }
 
-        /// <summary>밑변 1, 높이 1인 직각 이등변 삼각형 타일(왼쪽 아래 직각)을 생성한다.</summary>
-        public static GameObject CreateTrianglePlatform(GameObject stage, Rect cell)
+        /// <summary>밑변 1, 높이 1인 직각 이등변 삼각형 타일(기본: 왼쪽 아래 직각)을 생성한다. rotationSteps x 90도(반시계)만큼 회전.</summary>
+        public static GameObject CreateTrianglePlatform(GameObject stage, Rect cell, int rotationSteps = 0)
         {
             Transform parent = GetGroup(stage, MapNames.Platforms, true);
             GameObject go = new GameObject("TrianglePlatform");
@@ -235,6 +235,7 @@ namespace GardenerEditor
             go.layer = GameLayers.Ground;
             go.transform.position = new Vector3(cell.center.x, cell.center.y, 0f);
             go.transform.localScale = Vector3.one;
+            go.transform.rotation = Quaternion.Euler(0f, 0f, (((rotationSteps % 4) + 4) % 4) * 90f);
 
             SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Art/MapEditor/triangle_tile.png");

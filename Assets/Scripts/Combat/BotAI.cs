@@ -5,7 +5,7 @@ using UnityEngine;
 ///  - Scout         : 정찰 및 근접 추적/근접 공격
 ///  - Sniper        : 거리 유지 및 조준 레이저 사격
 ///  - Drone         : 공중 자유 순찰, 스캔 인식, 고속 돌진/접촉 공격
-///  - ChargeBot     : 인식 후 고속 돌진 (벽/근접 충돌 시 회복 대기)
+///  - SprintBot     : 탐색(walk) → 인식(scan) → 돌진(run) → 벽 근처/플레이어를 지나치면 정지(stop)
 ///  - MixerBot      : 인식 후 접근하여 회전 다단 히트 공격
 ///  - MixerChargeBot: 인식 후 고속 돌진하여 근접/벽 도달 시 회전 다단 히트 공격
 /// </summary>
@@ -17,7 +17,7 @@ public class BotAI : MonoBehaviour
         Scout = 0,
         Sniper = 1,
         Drone = 2,
-        ChargeBot = 3,
+        SprintBot = 3,
         MixerBot = 4,
         MixerChargeBot = 5
     }
@@ -95,6 +95,21 @@ public class BotAI : MonoBehaviour
     [SerializeField] private Vector2 mixerKnockback = new Vector2(5f, 2.5f);
     [SerializeField] private bool showMixerAttackVisual = true;
 
+    [Header("Sprint Bot")]
+    [Tooltip("돌진 중 벽까지 이 거리 안으로 들어오면 달리기를 멈춘다")]
+    [SerializeField, Min(0.1f)] private float sprintWallStopDistance = 1.6f;
+    [Tooltip("돌진 방향 기준으로 플레이어가 이 거리 이상 뒤로 지나가면 달리기를 멈춘다")]
+    [SerializeField, Min(0f)] private float sprintPassDistance = 0.6f;
+    [Tooltip("정지(stop) 모션 시간(초). 이 동안 감속하며 미끄러진다")]
+    [SerializeField, Min(0.05f)] private float sprintStopDuration = 0.5f;
+    [SerializeField, Min(1)] private int sprintContactDamage = 1;
+    [SerializeField, Min(0.1f)] private float sprintContactRange = 0.9f;
+    [SerializeField, Min(0.1f)] private float sprintContactVerticalRange = 1.2f;
+    [SerializeField, Min(0.05f)] private float sprintContactCooldown = 0.6f;
+    [SerializeField] private Vector2 sprintKnockback = new Vector2(5f, 2f);
+    [Tooltip("스프린트 봇 스프라이트 원본이 왼쪽을 보고 있으면 체크 (현재 에셋은 왼쪽을 봄)")]
+    [SerializeField] private bool sprintSpriteFacesLeft = true;
+
     [Header("Visual")]
     [SerializeField] private Color alertColor = Color.yellow;
     [Tooltip("스나이퍼 스프라이트 원본이 왼쪽을 보고 있으면 체크 (현재 에셋은 왼쪽을 봄). 방향이 반대로 보이면 이 값을 토글하세요.")]
@@ -102,6 +117,8 @@ public class BotAI : MonoBehaviour
 
     private SpriteRenderer spriteRenderer;
     private DroneBotAnimation droneAnimation;
+    private SprintBotAnimation sprintAnimation;
+    private int runDirection = 1;
     private HitReaction hitReaction;
     private Health health;
     private Rigidbody2D body;
@@ -131,12 +148,14 @@ public class BotAI : MonoBehaviour
     public DroneState CurrentDroneState => droneState;
     public bool IsDroneStunned => droneHitStunTimer > 0f || (hitReaction != null && hitReaction.IsStunned);
     public bool IsChargeOrMixerType =>
-        type == BotType.ChargeBot || type == BotType.MixerBot || type == BotType.MixerChargeBot;
+        type == BotType.MixerBot || type == BotType.MixerChargeBot;
+    public bool IsSprintType => type == BotType.SprintBot;
 
     private void Awake()
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
         droneAnimation = GetComponent<DroneBotAnimation>();
+        sprintAnimation = GetComponent<SprintBotAnimation>();
         hitReaction = GetComponent<HitReaction>();
         health = GetComponent<Health>();
         selfCollider = GetComponent<Collider2D>();
@@ -154,7 +173,9 @@ public class BotAI : MonoBehaviour
 
         if (spriteRenderer != null)
         {
-            if (spriteRenderer.sprite == null && droneAnimation == null)
+            if (type == BotType.SprintBot && sprintAnimation == null)
+                sprintAnimation = gameObject.AddComponent<SprintBotAnimation>();
+            if (spriteRenderer.sprite == null && droneAnimation == null && sprintAnimation == null)
                 spriteRenderer.sprite = RuntimeSprites.White;
             baseColor = spriteRenderer.color;
         }
@@ -196,7 +217,9 @@ public class BotAI : MonoBehaviour
     {
         if (spriteRenderer == null) return;
         bool faceRight = direction >= 0;
-        spriteRenderer.flipX = (type == BotType.Sniper && sniperSpriteFacesLeft) ? faceRight : !faceRight;
+        bool spriteFacesLeft = (type == BotType.Sniper && sniperSpriteFacesLeft)
+                            || (type == BotType.SprintBot && sprintSpriteFacesLeft);
+        spriteRenderer.flipX = spriteFacesLeft ? faceRight : !faceRight;
     }
 
     private void ResolvePlayer()
@@ -280,6 +303,12 @@ public class BotAI : MonoBehaviour
         }
 
         Vector2 delta = player.position - transform.position;
+
+        if (type == BotType.SprintBot)
+        {
+            UpdateSprint(delta);
+            return;
+        }
 
         if (IsChargeOrMixerType)
         {
@@ -465,6 +494,122 @@ public class BotAI : MonoBehaviour
         laser.enabled = visible;
     }
 
+    // ------------------------------------------------------------------ Sprint Bot
+    // 탐색(walk) → 인식(scan) → 돌진(run) → 정지(stop) → [범위 안이면 scan부터 다시 / 아니면 walk]
+    // ActionState 매핑: Patrol=walk, Recognizing=scan, Active=run, Recovery=stop
+
+    private bool SprintCanSee(Vector2 delta)
+    {
+        float range = delta.x * direction >= 0f ? scoutFrontRange : scoutBackRange;
+        return Mathf.Abs(delta.x) <= range && Mathf.Abs(delta.y) <= verticalDetectionTolerance;
+    }
+
+    private void SprintFacePlayer(Vector2 delta)
+    {
+        if (Mathf.Abs(delta.x) > 0.01f) direction = delta.x >= 0f ? 1 : -1;
+        ApplyFacing();
+    }
+
+    private void BeginSprintScan(Vector2 delta)
+    {
+        SprintFacePlayer(delta);
+        actionState = ActionState.Recognizing;
+        stateTimer = recognitionDelay;
+        SetHorizontalSpeed(0f);
+        if (sprintAnimation != null) sprintAnimation.Play(SprintBotAnimation.State.Scan, recognitionDelay);
+    }
+
+    private void UpdateSprint(Vector2 delta)
+    {
+        switch (actionState)
+        {
+            case ActionState.Patrol:
+                if (SprintCanSee(delta))
+                {
+                    BeginSprintScan(delta);
+                    return;
+                }
+                PatrolGround();
+                if (sprintAnimation != null) sprintAnimation.Play(SprintBotAnimation.State.Walk);
+                break;
+
+            case ActionState.Recognizing:
+                SetHorizontalSpeed(0f);
+                SprintFacePlayer(delta);
+                stateTimer -= Time.deltaTime;
+                if (stateTimer <= 0f)
+                {
+                    // 돌진 방향은 이 시점에 고정한다 (플레이어를 지나쳤는지 판정하기 위해)
+                    runDirection = direction;
+                    actionState = ActionState.Active;
+                    if (sprintAnimation != null) sprintAnimation.Play(SprintBotAnimation.State.Run);
+                }
+                else if (sprintAnimation != null)
+                {
+                    sprintAnimation.Play(SprintBotAnimation.State.Scan, recognitionDelay);
+                }
+                break;
+
+            case ActionState.Active:
+                UpdateSprintRun(delta);
+                break;
+
+            case ActionState.Recovery:
+                UpdateSprintStop(delta);
+                break;
+        }
+    }
+
+    private void UpdateSprintRun(Vector2 delta)
+    {
+        direction = runDirection;
+        ApplyFacing();
+        SetHorizontalSpeed(runDirection * patrolSpeed * chargeSpeedMultiplier);
+        if (sprintAnimation != null) sprintAnimation.Play(SprintBotAnimation.State.Run);
+
+        // 달리는 도중 닿으면 피해
+        if (attackTimer <= 0f && Mathf.Abs(delta.x) <= sprintContactRange && Mathf.Abs(delta.y) <= sprintContactVerticalRange)
+        {
+            attackTimer = sprintContactCooldown;
+            DamagePlayer(sprintContactDamage, new Vector2(runDirection * Mathf.Abs(sprintKnockback.x), sprintKnockback.y));
+        }
+
+        Vector2 pos = body != null ? body.position : (Vector2)transform.position;
+        bool nearWall = Physics2D.Raycast(pos + Vector2.up * 0.1f, Vector2.right * runDirection, sprintWallStopDistance, GameLayers.GroundMaskValue);
+        bool passedPlayer = delta.x * runDirection < -sprintPassDistance;
+
+        if (nearWall || passedPlayer) BeginSprintStop();
+    }
+
+    private void BeginSprintStop()
+    {
+        actionState = ActionState.Recovery;
+        stateTimer = sprintStopDuration;
+        if (sprintAnimation != null) sprintAnimation.Play(SprintBotAnimation.State.Stop, sprintStopDuration);
+    }
+
+    private void UpdateSprintStop(Vector2 delta)
+    {
+        stateTimer -= Time.deltaTime;
+
+        // 감속하며 미끄러진다. 벽이 바로 앞이면 즉시 멈춘다.
+        Vector2 pos = body != null ? body.position : (Vector2)transform.position;
+        bool wallAhead = Physics2D.Raycast(pos + Vector2.up * 0.1f, Vector2.right * runDirection, wallCheckDistance, GameLayers.GroundMaskValue);
+        float t = Mathf.Clamp01(stateTimer / Mathf.Max(0.05f, sprintStopDuration));
+        SetHorizontalSpeed(wallAhead ? 0f : runDirection * patrolSpeed * chargeSpeedMultiplier * t);
+
+        if (stateTimer > 0f) return;
+
+        SetHorizontalSpeed(0f);
+        if (SprintCanSee(delta))
+            BeginSprintScan(delta);          // 아직 인식 범위 안 → 인식부터 다시
+        else
+        {
+            actionState = ActionState.Patrol; // 범위 밖 → 탐색
+            if (sprintAnimation != null) sprintAnimation.Play(SprintBotAnimation.State.Walk);
+        }
+    }
+
     // ------------------------------------------------------------------ Charge & Mixer Bots
 
     private void UpdateChargeOrMixer(Vector2 delta)
@@ -551,10 +696,6 @@ public class BotAI : MonoBehaviour
             return;
         }
 
-        if (type == BotType.ChargeBot && (close || hitWall))
-        {
-            BeginRecovery();
-        }
     }
 
     private void BeginSpin()
@@ -763,13 +904,13 @@ public class BotAI : MonoBehaviour
 
     private void SetAlertTint()
     {
-        if (spriteRenderer != null && droneAnimation == null)
+        if (spriteRenderer != null && droneAnimation == null && sprintAnimation == null)
             spriteRenderer.color = alertColor;
     }
 
     private void RestoreBaseColor()
     {
-        if (spriteRenderer != null && droneAnimation == null)
+        if (spriteRenderer != null && droneAnimation == null && sprintAnimation == null)
             spriteRenderer.color = baseColor;
     }
 
@@ -834,7 +975,15 @@ public class BotAI : MonoBehaviour
     {
         if (!dead && actionState == ActionState.Active && collision.collider.gameObject.layer == GameLayers.Ground)
         {
-            if (type == BotType.ChargeBot) BeginRecovery();
+            if (type == BotType.SprintBot)
+            {
+                // 진행 방향의 벽(거의 수직인 면)에 부딪혔을 때만 정지. 경사/바닥 접촉은 무시.
+                for (int i = 0; i < collision.contactCount; i++)
+                {
+                    Vector2 n = collision.GetContact(i).normal;
+                    if (Mathf.Abs(n.x) > 0.7f && n.x * runDirection < 0f) { BeginSprintStop(); break; }
+                }
+            }
             else if (type == BotType.MixerChargeBot && attackTimer <= 0f) BeginSpin();
         }
         TryDroneContactAttack(collision.collider);
@@ -909,6 +1058,18 @@ public class BotAI : MonoBehaviour
                 if (droneAnimation != null && droneHitStunTimer > 0f) droneAnimation.PlayHit(droneHitStunTimer);
             }
             else if (droneAnimation != null) droneAnimation.PlayHit();
+            return;
+        }
+
+        if (type == BotType.SprintBot)
+        {
+            // 피격 시 어그로: 정찰/정지(쿨다운) 상태여도 바로 인식(scan) 단계로 진입. 돌진 중이면 그대로 달린다.
+            if (actionState == ActionState.Patrol || actionState == ActionState.Recovery)
+            {
+                Vector2 d = player != null ? (Vector2)(player.position - transform.position) : Vector2.zero;
+                BeginSprintScan(d);
+            }
+            if (sprintAnimation != null) sprintAnimation.PlayHit();
             return;
         }
 

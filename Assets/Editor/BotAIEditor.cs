@@ -49,8 +49,12 @@ public class BotAIEditor : Editor
                     );
                     break;
 
-                case BotAI.BotType.ChargeBot:
-                    DrawProps("scoutFrontRange", "scoutBackRange", "chargeSpeedMultiplier", "recoverySeconds", "mixerAttackRange", "mixerAttackVerticalRange");
+                case BotAI.BotType.SprintBot:
+                    DrawProps(
+                        "scoutFrontRange", "scoutBackRange", "chargeSpeedMultiplier",
+                        "sprintWallStopDistance", "sprintPassDistance", "sprintStopDuration",
+                        "sprintContactDamage", "sprintContactRange", "sprintContactVerticalRange",
+                        "sprintContactCooldown", "sprintKnockback", "sprintSpriteFacesLeft");
                     break;
 
                 case BotAI.BotType.MixerBot:

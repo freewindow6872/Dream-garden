@@ -21,6 +21,8 @@ namespace GardenerEditor
         [SerializeField] private Sprite platformSprite;
         [SerializeField] private MapTool tool = MapTool.Select;
         [SerializeField] private int gridIndex = 2;
+        /// <summary>삼각형 타일 회전 단계 (0~3, 1단계 = 반시계 90도). R 키로 변경.</summary>
+        [SerializeField] private int triangleRotation = 0;
 
         [SerializeField] private bool showGrid = true;
         [SerializeField] private bool showStageBounds = true;
@@ -193,6 +195,14 @@ namespace GardenerEditor
 
             EditorGUILayout.HelpBox(ToolHelp(tool), MessageType.None);
 
+            if (tool == MapTool.Triangle)
+            {
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField("삼각형 회전: " + (triangleRotation * 90) + "°", GUILayout.Width(120f));
+                if (GUILayout.Button("↻ 회전 (R)")) RotateTriangle(1);
+                EditorGUILayout.EndHorizontal();
+            }
+
             gridIndex = EditorGUILayout.Popup("그리드 크기", gridIndex, GridLabels);
 
             platformSprite = (Sprite)EditorGUILayout.ObjectField("발판 스프라이트", platformSprite, typeof(Sprite), false);
@@ -212,7 +222,7 @@ namespace GardenerEditor
                 case MapTool.OneWay:
                     return "아래에서 위로 뚫고 올라갈 수 있는 발판. 사용법은 발판과 같습니다.";
                 case MapTool.Triangle:
-                    return "밑변 1, 높이 1인 직각 이등변 삼각형 타일을 한 칸에 배치합니다. 기본 방향은 왼쪽 아래가 직각입니다.";
+                    return "밑변 1, 높이 1인 직각 이등변 삼각형 타일을 한 칸에 배치합니다. 기본 방향은 왼쪽 아래가 직각입니다.\nR = 반시계 90° 회전 / Shift+R = 시계 방향 회전 (Scene 뷰에 마우스를 올린 상태)";
                 case MapTool.Erase:
                     return "발판을 클릭(또는 드래그)해서 삭제합니다. Ctrl+Z로 되돌릴 수 있습니다.";
                 case MapTool.Start:
@@ -372,6 +382,21 @@ namespace GardenerEditor
 
             if (Application.isPlaying) return;
 
+            // 삼각형 도구: R = 회전. (Unity 기본 Scale 도구 단축키보다 먼저 가로챈다)
+            if (tool == MapTool.Triangle && e.keyCode == KeyCode.R && !e.control && !e.alt && !e.command)
+            {
+                if (e.type == EventType.KeyDown)
+                {
+                    RotateTriangle(e.shift ? -1 : 1);
+                    e.Use();
+                    sv.Repaint();
+                }
+                else if (e.type == EventType.KeyUp)
+                {
+                    e.Use();
+                }
+            }
+
             // Q/W/E/R 등으로 Unity 기본 도구를 고르면 그리기 도구는 끈다.
             if (tool != MapTool.Select && Tools.current != Tool.None)
             {
@@ -381,6 +406,13 @@ namespace GardenerEditor
             }
 
             if (tool != MapTool.Select) HandleTool(sv, stage, e);
+        }
+
+        private void RotateTriangle(int step)
+        {
+            triangleRotation = ((triangleRotation + step) % 4 + 4) % 4;
+            Repaint();
+            SceneView.RepaintAll();
         }
 
         private void HandleTool(SceneView sv, GameObject stage, Event e)
@@ -472,7 +504,7 @@ namespace GardenerEditor
                 case MapTool.Triangle:
                 {
                     Rect cell = MapEditorUtil.CellAt(dragCurrent, 1f);
-                    MapEditorUtil.CreateTrianglePlatform(stage, cell);
+                    MapEditorUtil.CreateTrianglePlatform(stage, cell, triangleRotation);
                     break;
                 }
 
@@ -634,9 +666,11 @@ namespace GardenerEditor
                 case MapTool.Triangle:
                 {
                     Rect r = MapEditorUtil.CellAt(mouseWorld, 1f);
-                    Vector3 a = new Vector3(r.xMin, r.yMin, 0f);
-                    Vector3 b = new Vector3(r.xMax, r.yMin, 0f);
-                    Vector3 c = new Vector3(r.xMin, r.yMax, 0f);
+                    Vector3 center = new Vector3(r.center.x, r.center.y, 0f);
+                    Quaternion rot = Quaternion.Euler(0f, 0f, triangleRotation * 90f);
+                    Vector3 a = center + rot * new Vector3(-0.5f, -0.5f, 0f);
+                    Vector3 b = center + rot * new Vector3(0.5f, -0.5f, 0f);
+                    Vector3 c = center + rot * new Vector3(-0.5f, 0.5f, 0f);
                     Handles.color = new Color(0.35f, 0.75f, 0.95f, 0.35f);
                     Handles.DrawAAConvexPolygon(a, b, c);
                     Handles.color = Color.white;
