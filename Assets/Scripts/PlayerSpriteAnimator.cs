@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -31,6 +31,8 @@ public class PlayerSpriteAnimator : MonoBehaviour
     [SerializeField, Min(1)] private int attack1FrameCount = 4;
     [SerializeField] private string attack2Prefix = "attack_2";
     [SerializeField, Min(1)] private int attack2FrameCount = 4;
+    [SerializeField] private string attack3Prefix = "attack_3";
+    [SerializeField, Min(1)] private int attack3FrameCount = 3;
     [SerializeField] private string hurtPrefix = "hurt";
     [SerializeField, Min(1)] private int hurtFrameCount = 1;
     [SerializeField] private string deathPrefix = "death";
@@ -51,7 +53,6 @@ public class PlayerSpriteAnimator : MonoBehaviour
     [SerializeField] private float verticalStateThreshold = 0.5f;
     [SerializeField] private float hurtDuration = 0.25f;
     [SerializeField] private float defaultAttackDuration = 0.26f;
-    [SerializeField] private int secondAttackComboIndex = 2;
 
     private SpriteRenderer spriteRenderer;
     private PlayerController2D controller;
@@ -60,7 +61,7 @@ public class PlayerSpriteAnimator : MonoBehaviour
 
     private Sprite[] idleFrames, runFrames, dashFrames;
     private Sprite[] jumpFrames, airFrames, fallFrames;
-    private Sprite[] attack1Frames, attack2Frames, hurtFrames, deathFrames;
+    private Sprite[] attack1Frames, attack2Frames, attack3Frames, hurtFrames, deathFrames;
 
     private int frameIndex;
     private float frameTimer;
@@ -134,6 +135,7 @@ public class PlayerSpriteAnimator : MonoBehaviour
         fallFrames = LoadFrames(fallPrefix, fallFrameCount);
         attack1Frames = LoadFrames(attack1Prefix, attack1FrameCount);
         attack2Frames = LoadFrames(attack2Prefix, attack2FrameCount);
+        attack3Frames = LoadFrames(attack3Prefix, attack3FrameCount);
         hurtFrames = LoadFrames(hurtPrefix, hurtFrameCount);
         deathFrames = LoadFrames(deathPrefix, deathFrameCount);
 
@@ -250,7 +252,15 @@ public class PlayerSpriteAnimator : MonoBehaviour
 
     private Sprite[] GetAttackFrames()
     {
-        return combat != null && combat.ComboIndex == secondAttackComboIndex ? attack2Frames : attack1Frames;
+        if (combat == null) return attack1Frames;
+        // ComboIndex is the original PlayerCombat step index: 0, 1, 2. Only the selected sprite sequence changes.
+        switch (combat.ComboIndex)
+        {
+            case 0: return attack1Frames;
+            case 1: return attack2Frames;
+            case 2: return attack3Frames;
+            default: return attack1Frames;
+        }
     }
 
     private void UpdateTimedAttack(Sprite[] frames)
