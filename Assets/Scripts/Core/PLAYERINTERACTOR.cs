@@ -40,7 +40,7 @@ public class PLAYERINTERACTOR : MonoBehaviour
         }
         return best;
     }
-
+  
     void SetCurrent(INTERACTABLE it)
     {
         if (it == current) return;
@@ -58,6 +58,12 @@ public class PLAYERINTERACTOR : MonoBehaviour
     }
     void Update()
     {
+        // 소지품이 열려 있으면 상호작용 중지
+        if (INVENTORYUI.Instance != null && INVENTORYUI.Instance.IsOpen)
+        {
+            SetCurrent(null);
+            return;
+        }
         SetCurrent(FindNearest());
 
         if (current != null && GARDENINPUT.InteractPressed)
