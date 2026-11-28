@@ -965,30 +965,6 @@ public class BotAI : MonoBehaviour
         ph.TakeDamage(info);
     }
 
-    // Reliable body-contact check independent of Collision/Trigger callbacks.
-    // Health.TakeDamage already enforces the player's existing invulnerability window.
-    private void FixedUpdate()
-    {
-        if (dead || player == null || selfCollider == null) return;
-
-        Health target = player.GetComponentInParent<Health>();
-        if (target == null || target.Team != Team.Player || target.IsDead) return;
-
-        Collider2D[] playerColliders = player.GetComponentsInChildren<Collider2D>();
-        for (int i = 0; i < playerColliders.Length; i++)
-        {
-            Collider2D playerCollider = playerColliders[i];
-            if (playerCollider == null || !playerCollider.enabled || !playerCollider.gameObject.activeInHierarchy) continue;
-
-            ColliderDistance2D contact = selfCollider.Distance(playerCollider);
-            if (contact.isValid && contact.distance <= 0f)
-            {
-                ApplyBodyContactDamage(target, contact.pointA);
-                return;
-            }
-        }
-    }
-
     private void OnCollisionEnter2D(Collision2D collision)
     {
         if (!dead && actionState == ActionState.Active && collision.collider.gameObject.layer == GameLayers.Ground)
@@ -1004,12 +980,12 @@ public class BotAI : MonoBehaviour
             }
             else if (type == BotType.MixerChargeBot && attackTimer <= 0f) BeginSpin();
         }
-        TryBodyContactAttack(collision.otherCollider);
+        TryBodyContactAttack(collision.collider);
     }
 
     private void OnCollisionStay2D(Collision2D collision)
     {
-        TryBodyContactAttack(collision.otherCollider);
+        TryBodyContactAttack(collision.collider);
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -1029,21 +1005,8 @@ public class BotAI : MonoBehaviour
         Health target = other.GetComponentInParent<Health>();
         if (target == null || target.Team != Team.Player || target.IsDead) return;
 
-        // Drone contact keeps its original aggro/stun restrictions.
-        if (type == BotType.Drone)
-        {
-            if (IsDroneStunned) return;
-            if (droneContactOnlyInAggro && droneState != DroneState.Aggro) return;
-        }
-
-        ApplyBodyContactDamage(target, other.ClosestPoint(transform.position));
-    }
-
-    private void ApplyBodyContactDamage(Health target, Vector2 hitPoint)
-    {
-        if (target == null || target.Team != Team.Player || target.IsDead) return;
-
-        // Existing Health invulnerability handles repeat contact; no extra cooldown or knockback.
+        // 모든 적은 플레이어와 몸체가 닿으면 접촉 피해를 준다.
+        // 반복 피해 여부는 플레이어 Health의 기존 무적 시간(hitInvulnerableTime)이 처리한다.
         int sourceDamage = type == BotType.Drone ? droneContactDamage : bodyContactDamage;
         DamageInfo info = new DamageInfo
         {
@@ -1051,8 +1014,10 @@ public class BotAI : MonoBehaviour
             knockback = Vector2.zero,
             sourceTeam = Team.Enemy,
             source = gameObject,
-            hitPoint = hitPoint
+            hitPoint = other.ClosestPoint(transform.position)
         };
+
+        // The player's hit-invulnerability window prevents repeated contact damage.
         target.TakeDamage(info);
     }
 

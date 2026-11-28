@@ -362,6 +362,7 @@ MonoBehaviour:
   laserVerticalTolerance: 0.65
   laserWidth: 0.055
   sniperKnockback: {x: 3, y: 1}
+  bodyContactDamage: 1
   droneState: 0
   droneSpriteFacesLeft: 1
   droneDetectionRadius: 8
@@ -371,8 +372,6 @@ MonoBehaviour:
   droneAggroSpeedMultiplier: 1.7
   droneTargetOffsetY: 0
   droneContactDamage: 1
-  droneContactKnockback: {x: 4.5, y: 2.5}
-  droneContactCooldown: 0.4
   droneContactOnlyInAggro: 1
   droneHitStunDuration: 0.35
   droneHitKnockbackScale: 0
@@ -387,6 +386,13 @@ MonoBehaviour:
   mixerAttackCooldown: 2.5
   mixerKnockback: {x: 5, y: 2.5}
   showMixerAttackVisual: 1
+  sprintWallStopDistance: 1.6
+  sprintPassDistance: 0.6
+  sprintStopDuration: 0.5
+  sprintContactDamage: 1
+  sprintContactRange: 0.9
+  sprintContactVerticalRange: 1.2
+  sprintSpriteFacesLeft: 1
   alertColor: {r: 1, g: 0.92, b: 0.2, a: 1}
   sniperSpriteFacesLeft: 1
 --- !u!1 &9100000
@@ -421,7 +427,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: -4.84, y: -0.91, z: 0}
-  m_LocalScale: {x: 1.2, y: 1.2, z: 1}
+  m_LocalScale: {x: 1.25, y: 1.25, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -468,7 +474,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 2
   m_Sprite: {fileID: 21300000, guid: b0c98fc63338539cab0cf3e5dc77ca52, type: 3}
-  m_Color: {r: 0.95, g: 0.25, b: 0.2, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -629,6 +635,7 @@ MonoBehaviour:
   laserVerticalTolerance: 0.65
   laserWidth: 0.055
   sniperKnockback: {x: 3, y: 1}
+  bodyContactDamage: 1
   droneState: 0
   droneSpriteFacesLeft: 1
   droneDetectionRadius: 8
@@ -638,8 +645,6 @@ MonoBehaviour:
   droneAggroSpeedMultiplier: 1.7
   droneTargetOffsetY: 0
   droneContactDamage: 1
-  droneContactKnockback: {x: 4.5, y: 2.5}
-  droneContactCooldown: 0.4
   droneContactOnlyInAggro: 1
   droneHitStunDuration: 0.35
   droneHitKnockbackScale: 0
@@ -654,6 +659,13 @@ MonoBehaviour:
   mixerAttackCooldown: 2.5
   mixerKnockback: {x: 5, y: 2.5}
   showMixerAttackVisual: 1
+  sprintWallStopDistance: 1.6
+  sprintPassDistance: 0.6
+  sprintStopDuration: 0.5
+  sprintContactDamage: 1
+  sprintContactRange: 0.9
+  sprintContactVerticalRange: 1.2
+  sprintSpriteFacesLeft: 1
   alertColor: {r: 1, g: 0.92, b: 0.2, a: 1}
   sniperSpriteFacesLeft: 1
 --- !u!1 &9200000
@@ -897,6 +909,7 @@ MonoBehaviour:
   laserVerticalTolerance: 0.65
   laserWidth: 0.055
   sniperKnockback: {x: 3, y: 1}
+  bodyContactDamage: 1
   droneState: 0
   droneSpriteFacesLeft: 1
   droneDetectionRadius: 8
@@ -906,8 +919,6 @@ MonoBehaviour:
   droneAggroSpeedMultiplier: 4.5
   droneTargetOffsetY: 0
   droneContactDamage: 1
-  droneContactKnockback: {x: 4.5, y: 2.5}
-  droneContactCooldown: 0.4
   droneContactOnlyInAggro: 1
   droneHitStunDuration: 0.35
   droneHitKnockbackScale: 0
@@ -922,6 +933,13 @@ MonoBehaviour:
   mixerAttackCooldown: 2.5
   mixerKnockback: {x: 5, y: 2.5}
   showMixerAttackVisual: 1
+  sprintWallStopDistance: 1.6
+  sprintPassDistance: 0.6
+  sprintStopDuration: 0.5
+  sprintContactDamage: 1
+  sprintContactRange: 0.9
+  sprintContactVerticalRange: 1.2
+  sprintSpriteFacesLeft: 1
   alertColor: {r: 1, g: 0.92, b: 0.2, a: 1}
   sniperSpriteFacesLeft: 1
 --- !u!114 &9200009
@@ -975,8 +993,8 @@ Transform:
   m_GameObject: {fileID: 9300000}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -22.94, y: 3.5, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 7.89, y: -2.39, z: 0}
+  m_LocalScale: {x: 1.4, y: 1.4, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -1068,8 +1086,8 @@ BoxCollider2D:
   m_Offset: {x: 0, y: 0}
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
-    pivot: {x: 0.5, y: 0.5}
-    oldSize: {x: 1, y: 0.8828125}
+    pivot: {x: 0.555, y: 0.476}
+    oldSize: {x: 1.95, y: 2.0266666}
     newSize: {x: 1, y: 1}
     adaptiveTilingThreshold: 0.5
     drawMode: 0
@@ -1158,8 +1176,8 @@ MonoBehaviour:
   player: {fileID: 0}
   maxHealth: 100
   gearReward: 1
-  patrolSpeed: 0.65
-  chaseSpeedMultiplier: 1.5
+  patrolSpeed: 2
+  chaseSpeedMultiplier: 5.75
   usePatrolBounds: 0
   patrolMinX: -4
   patrolMaxX: 4
@@ -1184,6 +1202,7 @@ MonoBehaviour:
   laserVerticalTolerance: 0.65
   laserWidth: 0.055
   sniperKnockback: {x: 3, y: 1}
+  bodyContactDamage: 1
   droneState: 0
   droneSpriteFacesLeft: 1
   droneDetectionRadius: 8
@@ -1193,8 +1212,6 @@ MonoBehaviour:
   droneAggroSpeedMultiplier: 1.7
   droneTargetOffsetY: 0
   droneContactDamage: 1
-  droneContactKnockback: {x: 4.5, y: 2.5}
-  droneContactCooldown: 0.4
   droneContactOnlyInAggro: 1
   droneHitStunDuration: 0.35
   droneHitKnockbackScale: 0
@@ -1209,6 +1226,13 @@ MonoBehaviour:
   mixerAttackCooldown: 2.5
   mixerKnockback: {x: 5, y: 2.5}
   showMixerAttackVisual: 1
+  sprintWallStopDistance: 1.6
+  sprintPassDistance: 0.6
+  sprintStopDuration: 0.5
+  sprintContactDamage: 1
+  sprintContactRange: 0.9
+  sprintContactVerticalRange: 1.2
+  sprintSpriteFacesLeft: 1
   alertColor: {r: 1, g: 0.92, b: 0.016, a: 1}
   sniperSpriteFacesLeft: 1
 --- !u!114 &9300008
@@ -1473,6 +1497,7 @@ MonoBehaviour:
   laserVerticalTolerance: 0.65
   laserWidth: 0.055
   sniperKnockback: {x: 3, y: 1}
+  bodyContactDamage: 1
   droneState: 0
   droneSpriteFacesLeft: 1
   droneDetectionRadius: 8
@@ -1482,8 +1507,6 @@ MonoBehaviour:
   droneAggroSpeedMultiplier: 1.7
   droneTargetOffsetY: 0
   droneContactDamage: 1
-  droneContactKnockback: {x: 4.5, y: 2.5}
-  droneContactCooldown: 0.4
   droneContactOnlyInAggro: 1
   droneHitStunDuration: 0.35
   droneHitKnockbackScale: 0
@@ -1498,6 +1521,13 @@ MonoBehaviour:
   mixerAttackCooldown: 2.5
   mixerKnockback: {x: 5, y: 2.5}
   showMixerAttackVisual: 1
+  sprintWallStopDistance: 1.6
+  sprintPassDistance: 0.6
+  sprintStopDuration: 0.5
+  sprintContactDamage: 1
+  sprintContactRange: 0.9
+  sprintContactVerticalRange: 1.2
+  sprintSpriteFacesLeft: 1
   alertColor: {r: 1, g: 0.92, b: 0.016, a: 1}
   sniperSpriteFacesLeft: 1
 --- !u!1 &9300200
@@ -1740,6 +1770,7 @@ MonoBehaviour:
   laserVerticalTolerance: 0.65
   laserWidth: 0.055
   sniperKnockback: {x: 3, y: 1}
+  bodyContactDamage: 1
   droneState: 0
   droneSpriteFacesLeft: 1
   droneDetectionRadius: 8
@@ -1749,8 +1780,6 @@ MonoBehaviour:
   droneAggroSpeedMultiplier: 1.7
   droneTargetOffsetY: 0
   droneContactDamage: 1
-  droneContactKnockback: {x: 4.5, y: 2.5}
-  droneContactCooldown: 0.4
   droneContactOnlyInAggro: 1
   droneHitStunDuration: 0.35
   droneHitKnockbackScale: 0
@@ -1765,6 +1794,13 @@ MonoBehaviour:
   mixerAttackCooldown: 2.5
   mixerKnockback: {x: 5, y: 2.5}
   showMixerAttackVisual: 1
+  sprintWallStopDistance: 1.6
+  sprintPassDistance: 0.6
+  sprintStopDuration: 0.5
+  sprintContactDamage: 1
+  sprintContactRange: 0.9
+  sprintContactVerticalRange: 1.2
+  sprintSpriteFacesLeft: 1
   alertColor: {r: 1, g: 0.92, b: 0.016, a: 1}
   sniperSpriteFacesLeft: 1
 --- !u!1 &519420028
@@ -3094,8 +3130,8 @@ MonoBehaviour:
   inputBufferTime: 0.2
   moveMultiplierWhileAttacking: 0.35
   hitStopTime: 0.045
-  startupScale: 1
-  recoveryScale: 1
+  startupScale: 0.6
+  recoveryScale: 0.6
   showSlashDebug: 1
 --- !u!114 &1637174878
 MonoBehaviour:
@@ -3362,6 +3398,8 @@ MonoBehaviour:
   attack1FrameCount: 4
   attack2Prefix: attack_2
   attack2FrameCount: 4
+  attack3Prefix: attack_3
+  attack3FrameCount: 3
   hurtPrefix: hurt
   hurtFrameCount: 1
   deathPrefix: death
@@ -3378,7 +3416,6 @@ MonoBehaviour:
   verticalStateThreshold: 0.5
   hurtDuration: 0.25
   defaultAttackDuration: 0.26
-  secondAttackComboIndex: 2
 --- !u!1 &2043073550
 GameObject:
   m_ObjectHideFlags: 0

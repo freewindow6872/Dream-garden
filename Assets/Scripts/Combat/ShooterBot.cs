@@ -21,6 +21,9 @@ public class ShooterBot : MonoBehaviour
     [SerializeField] private int damage = 1;
     [SerializeField] private Vector2 knockback = new Vector2(5f, 3f);
 
+    [Header("몸체 접촉 피해")]
+    [SerializeField, Min(1)] private int contactDamage = 1;
+
     [Header("방향")]
     [Tooltip("그림이 오른쪽을 보는 기준. 체크 해제하면 왼쪽을 보고 쏜다 (스프라이트 좌우 반전)")]
     [SerializeField] private bool facingRight = false;
@@ -98,6 +101,47 @@ public class ShooterBot : MonoBehaviour
     private Vector2 MuzzlePosition()
     {
         return (Vector2)transform.position + new Vector2(muzzleOffset.x * FacingDir, muzzleOffset.y);
+    }
+
+    // 총알 공격과 별개로, 적 본체가 플레이어에게 닿아도 피해를 준다.
+    // 별도 쿨다운/넉백은 사용하지 않고 플레이어 Health의 기존 무적 시간을 따른다.
+    private void OnCollisionEnter2D(Collision2D collision)
+    {
+        TryBodyContactAttack(collision.collider);
+    }
+
+    private void OnCollisionStay2D(Collision2D collision)
+    {
+        TryBodyContactAttack(collision.collider);
+    }
+
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        TryBodyContactAttack(other);
+    }
+
+    private void OnTriggerStay2D(Collider2D other)
+    {
+        TryBodyContactAttack(other);
+    }
+
+    private void TryBodyContactAttack(Collider2D other)
+    {
+        if (health == null || health.IsDead || health.Team != Team.Enemy || other == null) return;
+
+        Health target = other.GetComponentInParent<Health>();
+        if (target == null || target.Team != Team.Player || target.IsDead) return;
+
+        DamageInfo info = new DamageInfo
+        {
+            amount = Mathf.Max(1, contactDamage),
+            knockback = Vector2.zero,
+            sourceTeam = Team.Enemy,
+            source = gameObject,
+            hitPoint = other.ClosestPoint(transform.position)
+        };
+
+        target.TakeDamage(info);
     }
 
     private void OnDrawGizmosSelected()
